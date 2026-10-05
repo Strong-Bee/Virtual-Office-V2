@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/src/store/useAppStore';
 import { syncPlayerPresence } from '@/src/lib/firestore-actions';
 import { soundFX } from '@/src/lib/sound';
@@ -21,6 +21,9 @@ import {
   Sliders,
   Compass,
   Volume2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
 } from 'lucide-react';
 import { updateAIEmployeeState } from '@/src/lib/firestore-actions';
 
@@ -58,7 +61,17 @@ export function VirtualOfficeCanvas() {
 
   const [aiContextMenuOpen, setAiContextMenuOpen] = useState(false);
   const [coffeeToast, setCoffeeToast] = useState<string | null>(null);
+  const [cameraZoom, setCameraZoom] = useState(1);
+  const cameraZoomRef = useRef(1);
+  const applyCameraZoomRef = useRef<(zoom: number) => void>(() => {});
   const touchDirRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+
+  const updateCameraZoom = useCallback((value: number) => {
+    const zoom = Math.round(Math.min(2, Math.max(0.5, value)) * 10) / 10;
+    cameraZoomRef.current = zoom;
+    setCameraZoom(zoom);
+    applyCameraZoomRef.current(zoom);
+  }, []);
 
   // Refs to hold latest state for Phaser update loop without re-creating game instance
   const stateRef = useRef<{
@@ -166,6 +179,23 @@ export function VirtualOfficeCanvas() {
 
           this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
           this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+          applyCameraZoomRef.current = (zoom) =>
+            this.cameras.main.setZoom(zoom);
+          this.cameras.main.setZoom(cameraZoomRef.current);
+          this.input.on(
+            'wheel',
+            (
+              _pointer: Phaser.Input.Pointer,
+              _objects: Phaser.GameObjects.GameObject[],
+              _deltaX: number,
+              deltaY: number,
+              _deltaZ: number
+            ) => {
+            updateCameraZoom(
+              cameraZoomRef.current - Math.sign(deltaY) * 0.1
+            );
+            }
+          );
 
           // 1. Draw Floor & Grid
           const bgGraphics = this.add.graphics();
@@ -841,6 +871,7 @@ export function VirtualOfficeCanvas() {
     setSelectedAIEmployeeId,
     setSelectedDepartmentId,
     setWhiteboardOpen,
+    updateCameraZoom,
   ]);
 
   // Calculate proximity audio attenuation for nearby human & AI entities
@@ -884,6 +915,48 @@ export function VirtualOfficeCanvas() {
             {Math.round(localPlayerPos.y / 32)}) · WASD / Touch D-Pad
           </div>
         </div>
+      </div>
+
+      <div
+        className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-1 bg-slate-900/90 border border-slate-800 p-1 rounded-lg backdrop-blur-md"
+        aria-label="Virtual Office zoom controls"
+      >
+        <button
+          type="button"
+          onClick={() => updateCameraZoom(cameraZoom - 0.1)}
+          disabled={cameraZoom <= 0.5}
+          aria-label="Perkecil tampilan"
+          title="Perkecil"
+          className="w-11 h-11 flex items-center justify-center rounded-md text-slate-200 hover:bg-slate-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <span
+          className="min-w-12 text-center text-xs font-mono text-slate-200 tabular-nums"
+          aria-live="polite"
+        >
+          {Math.round(cameraZoom * 100)}%
+        </span>
+        <button
+          type="button"
+          onClick={() => updateCameraZoom(cameraZoom + 0.1)}
+          disabled={cameraZoom >= 2}
+          aria-label="Perbesar tampilan"
+          title="Perbesar"
+          className="w-11 h-11 flex items-center justify-center rounded-md text-slate-200 hover:bg-slate-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => updateCameraZoom(1)}
+          disabled={cameraZoom === 1}
+          aria-label="Atur ulang zoom"
+          title="Atur ulang zoom"
+          className="w-11 h-11 flex items-center justify-center rounded-md text-slate-200 hover:bg-slate-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Mobile & Tablet Touch D-Pad Controls (Visible on touch/mobile viewports) */}

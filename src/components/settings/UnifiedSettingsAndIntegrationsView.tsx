@@ -102,7 +102,8 @@ export function UnifiedSettingsAndIntegrationsView() {
     'DISCONNECTED' | 'QR_READY' | 'CONNECTED'
   >('DISCONNECTED');
   const [waQrDataUrl, setWaQrDataUrl] = useState<string | null>(null);
-  const [waTargetPhone, setWaTargetPhone] = useState('6281234567890');
+  const [waError, setWaError] = useState<string | null>(null);
+  const [waTargetPhone, setWaTargetPhone] = useState('');
   const [waDeviceName, setWaDeviceName] = useState<string | null>(null);
   const [waAutoApprovals, setWaAutoApprovals] = useState(true);
   const [waAutoTasks, setWaAutoTasks] = useState(true);
@@ -154,11 +155,14 @@ export function UnifiedSettingsAndIntegrationsView() {
       .then((data) => {
         if (data.status) setWaStatus(data.status);
         if (data.qrDataUrl) setWaQrDataUrl(data.qrDataUrl);
+        if (data.error) setWaError(data.error);
         if (data.targetPhone) setWaTargetPhone(data.targetPhone);
         if (data.pairedDeviceName) setWaDeviceName(data.pairedDeviceName);
         if (data.logs) setWaLogs(data.logs);
       })
-      .catch(() => {});
+      .catch((err) => {
+        setWaError(err instanceof Error ? err.message : 'Gagal memuat status WhatsApp.');
+      });
 
     // Load Midtrans transactions
     fetch('/api/payments/midtrans')
@@ -168,6 +172,37 @@ export function UnifiedSettingsAndIntegrationsView() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (activeSubTab !== 'WHATSAPP_BAILEYS') return;
+
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const res = await fetch('/api/whatsapp', { cache: 'no-store' });
+        const data = await res.json();
+        if (!active) return;
+        if (data.status) setWaStatus(data.status);
+        setWaQrDataUrl(data.qrDataUrl || null);
+        setWaDeviceName(data.pairedDeviceName || null);
+        setWaError(data.error || null);
+        if (data.logs) setWaLogs(data.logs);
+      } catch (err) {
+        if (active) {
+          setWaError(
+            err instanceof Error ? err.message : 'Gagal memuat status WhatsApp.'
+          );
+        }
+      }
+    };
+
+    void refreshStatus();
+    const timer = window.setInterval(() => void refreshStatus(), 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeSubTab]);
 
   const buildApiKeysPayload = () => ({
     nvidiaApiKey: nvidiaApiKeyInput.trim(),
@@ -286,29 +321,17 @@ export function UnifiedSettingsAndIntegrationsView() {
         body: JSON.stringify({ action: 'GENERATE_QR' }),
       });
       const data = await res.json();
-      setWaStatus(data.status || 'QR_READY');
+      if (!res.ok) throw new Error(data.error || 'Gagal memulai koneksi WhatsApp.');
+      setWaStatus(data.status || 'DISCONNECTED');
       setWaQrDataUrl(data.qrDataUrl || null);
+      setWaError(data.error || null);
+    } catch (err) {
+      setWaError(
+        err instanceof Error ? err.message : 'Gagal memulai koneksi WhatsApp.'
+      );
     } finally {
       setWaLoadingQr(false);
     }
-  };
-
-  const handleConfirmBaileysPairing = async () => {
-    soundFX.playClick();
-    const res = await fetch('/api/whatsapp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'CONFIRM_PAIRING',
-        targetPhone: waTargetPhone,
-        deviceName: 'WhatsApp Multi-Device (Baileys v6.7)',
-      }),
-    });
-    const data = await res.json();
-    setWaStatus('CONNECTED');
-    setWaDeviceName(data.pairedDeviceName);
-    if (data.logs) setWaLogs(data.logs);
-    soundFX.playNotification();
   };
 
   const handleSendTestWhatsApp = async (e: React.FormEvent) => {
@@ -316,22 +339,30 @@ export function UnifiedSettingsAndIntegrationsView() {
     soundFX.playClick();
     const msgToSend =
       waCustomMessage.trim() ||
-      `🔔 *NexusOS AI Virtual Office*\nHalo Supervisor! Koneksi WhatsApp Baileys aktif. Semua notifikasi AI Approval, Task, dan Midtrans dikirim secara realtime ke ${waTargetPhone}.`;
+      `🔔 *NexusOS AI Virtual Office*\nIni adalah pesan tes koneksi WhatsApp Baileys.`;
 
-    const res = await fetch('/api/whatsapp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'SEND_NOTIFICATION',
-        eventType: 'MANUAL_TEST_NOTIFICATION',
-        targetPhone: waTargetPhone,
-        message: msgToSend,
-      }),
-    });
-    const data = await res.json();
-    if (data.logs) setWaLogs(data.logs);
-    setWaCustomMessage('');
-    soundFX.playNotification();
+    try {
+      const res = await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'SEND_NOTIFICATION',
+          eventType: 'MANUAL_TEST_NOTIFICATION',
+          targetPhone: waTargetPhone,
+          message: msgToSend,
+        }),
+      });
+      const data = await res.json();
+      if (data.logs) setWaLogs(data.logs);
+      if (!res.ok) throw new Error(data.error || 'Pesan WhatsApp gagal dikirim.');
+      setWaCustomMessage('');
+      setWaError(null);
+      soundFX.playNotification();
+    } catch (err) {
+      setWaError(
+        err instanceof Error ? err.message : 'Pesan WhatsApp gagal dikirim.'
+      );
+    }
   };
 
   const handleCreateMidtransInvoice = async (e: React.FormEvent) => {
@@ -762,8 +793,9 @@ export function UnifiedSettingsAndIntegrationsView() {
                 />
               ) : (
                 <div className="text-slate-500 text-xs px-4">
-                  Klik tombol <strong>Generate QR Code Baileys</strong> di bawah
-                  untuk menampilkan kode QR penautan.
+                  {waStatus === 'QR_READY'
+                    ? 'Menyiapkan QR pairing WhatsApp...'
+                    : 'Mulai koneksi untuk mendapatkan QR pairing WhatsApp.'}
                 </div>
               )}
             </div>
@@ -772,26 +804,27 @@ export function UnifiedSettingsAndIntegrationsView() {
               <button
                 type="button"
                 onClick={handleGenerateBaileysQR}
-                disabled={waLoadingQr}
+                disabled={waLoadingQr || waStatus === 'CONNECTED'}
                 className="flex-1 min-h-[44px] px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium text-white rounded-xl flex items-center justify-center gap-2 transition-colors"
               >
                 <RefreshCw
                   className={`w-4 h-4 ${waLoadingQr ? 'animate-spin' : ''}`}
                 />
-                {waQrDataUrl ? 'Refresh QR Code' : 'Generate QR Code Baileys'}
+                {waLoadingQr
+                  ? 'Menghubungkan...'
+                  : waQrDataUrl
+                    ? 'Menunggu scan QR...'
+                    : 'Generate QR Code Baileys'}
               </button>
-
-              {waStatus !== 'CONNECTED' && (
-                <button
-                  type="button"
-                  onClick={handleConfirmBaileysPairing}
-                  className="flex-1 min-h-[44px] px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white rounded-xl flex items-center justify-center gap-2 transition-colors"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Simulasi Scan & Tautkan
-                </button>
-              )}
             </div>
+            {waError && (
+              <p
+                role="alert"
+                className="w-full rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-left text-xs text-rose-300"
+              >
+                {waError}
+              </p>
+            )}
           </div>
 
           {/* Right Column: Notification Routing & Live Delivery Log */}
@@ -810,7 +843,7 @@ export function UnifiedSettingsAndIntegrationsView() {
                     type="tel"
                     value={waTargetPhone}
                     onChange={(e) => setWaTargetPhone(e.target.value)}
-                    placeholder="6281234567890"
+                    placeholder="628xxxxxxxxxx"
                     className="w-full min-h-[44px] bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
                   />
                 </div>
@@ -819,19 +852,33 @@ export function UnifiedSettingsAndIntegrationsView() {
                     type="button"
                     onClick={async () => {
                       soundFX.playClick();
-                      await fetch('/api/whatsapp', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          action: 'UPDATE_CONFIG',
-                          targetPhone: waTargetPhone,
-                          autoNotifyApprovals: waAutoApprovals,
-                          autoNotifyTaskComplete: waAutoTasks,
-                          autoNotifyBudgetAlerts: waAutoBudget,
-                          autoNotifyPayments: waAutoPayments,
-                        }),
-                      });
-                      soundFX.playNotification();
+                      try {
+                        const res = await fetch('/api/whatsapp', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            action: 'UPDATE_CONFIG',
+                            targetPhone: waTargetPhone,
+                            autoNotifyApprovals: waAutoApprovals,
+                            autoNotifyTaskComplete: waAutoTasks,
+                            autoNotifyBudgetAlerts: waAutoBudget,
+                            autoNotifyPayments: waAutoPayments,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          throw new Error(data.error || 'Gagal menyimpan konfigurasi WhatsApp.');
+                        }
+                        setWaTargetPhone(data.targetPhone || '');
+                        setWaError(null);
+                        soundFX.playNotification();
+                      } catch (err) {
+                        setWaError(
+                          err instanceof Error
+                            ? err.message
+                            : 'Gagal menyimpan konfigurasi WhatsApp.'
+                        );
+                      }
                     }}
                     className="w-full min-h-[44px] px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white rounded-xl transition-colors"
                   >
@@ -919,7 +966,15 @@ export function UnifiedSettingsAndIntegrationsView() {
                   >
                     <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
                       <span>To: +{log.recipientPhone}</span>
-                      <span className="text-emerald-400">{log.status}</span>
+                      <span
+                        className={
+                          log.status.startsWith('SENT')
+                            ? 'text-emerald-400'
+                            : 'text-rose-300'
+                        }
+                      >
+                        {log.status}
+                      </span>
                     </div>
                     <div className="text-slate-200 whitespace-pre-wrap leading-relaxed">
                       {log.message}

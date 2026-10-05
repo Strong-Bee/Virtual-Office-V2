@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       ];
 
       if (serverIntegrations.waAutoNotifyPayments) {
-        serverIntegrations.appendWhatsAppNotification({
+        await serverIntegrations.sendWhatsAppNotification({
           eventType: 'MIDTRANS_INVOICE_CREATED',
           message: `🧾 *[Midtrans Invoice Dibuat]*\nOrder ID: *${orderId}*\nClient: *${clientName}*\nPaket: *${planName}*\nNominal: *Rp ${amountIdr.toLocaleString(
             'id-ID'
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
 
       if (settledTx && serverIntegrations.waAutoNotifyPayments) {
         const s: MidtransTransactionRecord = settledTx;
-        serverIntegrations.appendWhatsAppNotification({
+        await serverIntegrations.sendWhatsAppNotification({
           eventType: 'MIDTRANS_PAYMENT_SETTLEMENT',
           message: `✅ *[Midtrans Pembayaran Lunas / Settlement]*\nOrder ID: *${
             s.orderId

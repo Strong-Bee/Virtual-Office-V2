@@ -1,4 +1,11 @@
 import QRCode from 'qrcode';
+import makeWASocket, {
+  DisconnectReason,
+  useMultiFileAuthState,
+  type WASocket,
+} from '@whiskeysockets/baileys';
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
 import { AIModelProvider } from '@/src/types';
 
 export interface ServerAISettings {
@@ -92,37 +99,21 @@ class ServerIntegrationsManager {
     };
   }
 
-  public waStatus: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED' = 'QR_READY';
+  public waStatus: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED' =
+    'DISCONNECTED';
   public waQrDataUrl: string | null = null;
-  public waTargetPhone: string =
-    process.env.WHATSAPP_SUPERVISOR_PHONE || '6281234567890';
+  public waError: string | null = null;
+  public waTargetPhone: string = process.env.WHATSAPP_SUPERVISOR_PHONE || '';
   public waPairedDeviceName: string | null = null;
   public waAutoNotifyApprovals = true;
   public waAutoNotifyTaskComplete = true;
   public waAutoNotifyBudgetAlerts = true;
   public waAutoNotifyPayments = true;
-
-  public waLogs: WhatsAppDeliveryLog[] = [
-    {
-      id: 'wa_log_init_1',
-      recipientPhone: '6281234567890',
-      eventType: 'AI_APPROVAL_REQUEST',
-      message:
-        '🔔 *[NexusOS AI Approval Gate]*\n🤖 *Sarah (Marketing Strategist)* meminta persetujuan Human Supervisor untuk task:\n*"Draft & Schedule Q4 Enterprise Email Blast (2,400 Leads)"*\nRisk: HIGH | Est. Cost: $14.50\nSilakan tinjau di tab Human Approvals.',
-      status: 'DELIVERED (Baileys MD)',
-      timestamp: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    },
-    {
-      id: 'wa_log_init_2',
-      recipientPhone: '6281234567890',
-      eventType: 'MIDTRANS_SETTLEMENT',
-      message:
-        '💳 *[Midtrans Payment Settlement]*\nOrder ID: *NX-MID-2026-8841*\nClient: *PT Nusantara Cloud Tbk*\nNominal: *Rp 7.500.000* (LUNAS / SETTLEMENT)\nPaket: Enterprise AI Workforce + 25 Virtual Seats.',
-      status: 'DELIVERED (Baileys MD)',
-      timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    },
-  ];
-
+  public waLogs: WhatsAppDeliveryLog[] = [];
+  private waSocket: WASocket | null = null;
+  private waStartPromise: Promise<void> | null = null;
+  private waReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private waQrPayload: string | null = null;
   public midtransTransactions: MidtransTransactionRecord[] = [
     {
       orderId: 'NX-MID-2026-8841',
@@ -148,54 +139,163 @@ class ServerIntegrationsManager {
     },
   ];
 
-  public async ensureQrCodeGenerated(): Promise<string> {
-    if (this.waQrDataUrl) return this.waQrDataUrl;
-    return this.regenerateBaileysQr();
+  private getWhatsAppAuthDir(): string {
+    return (
+      process.env.WHATSAPP_AUTH_DIR ||
+      path.join(process.cwd(), '.baileys-auth')
+    );
   }
 
-  public async regenerateBaileysQr(): Promise<string> {
-    // Generate realistic WhatsApp Multi-Device Baileys pairing payload QR
-    const refToken = `2@${Math.random().toString(36).substring(2, 15)}${Math.random()
-      .toString(36)
-      .substring(2, 15)},${Buffer.from(`nexusos-baileys-${Date.now()}`).toString(
-      'base64'
-    )},${Date.now()}`;
-
-    const dataUrl = await QRCode.toDataURL(refToken, {
-      width: 300,
-      margin: 2,
-      color: {
-        dark: '#0f172a',
-        light: '#ffffff',
-      },
-    });
-    this.waQrDataUrl = dataUrl;
-    if (this.waStatus === 'DISCONNECTED') {
-      this.waStatus = 'QR_READY';
+  public async ensureWhatsAppConnection(): Promise<void> {
+    if (this.waSocket) return;
+    if (this.waStartPromise) return this.waStartPromise;
+    if (this.waReconnectTimer) {
+      clearTimeout(this.waReconnectTimer);
+      this.waReconnectTimer = null;
     }
-    return dataUrl;
+
+    const startPromise = (async () => {
+      const { state, saveCreds } = await useMultiFileAuthState(
+        this.getWhatsAppAuthDir()
+      );
+      const socket = makeWASocket({
+        auth: state,
+        markOnlineOnConnect: false,
+      });
+      this.waSocket = socket;
+      this.waError = null;
+
+      socket.ev.on('creds.update', () => {
+        void saveCreds().catch((error: unknown) => {
+          this.waError =
+            error instanceof Error ? error.message : 'Failed to save WhatsApp session';
+        });
+      });
+
+      socket.ev.on('connection.update', ({ connection, qr, lastDisconnect }) => {
+        if (qr) {
+          this.waQrPayload = qr;
+          this.waStatus = 'QR_READY';
+          this.waError = null;
+          void QRCode.toDataURL(qr, {
+            width: 300,
+            margin: 2,
+            color: { dark: '#0f172a', light: '#ffffff' },
+          })
+            .then((dataUrl) => {
+              if (this.waSocket === socket && this.waQrPayload === qr) {
+                this.waQrDataUrl = dataUrl;
+              }
+            })
+            .catch((error: unknown) => {
+              this.waError =
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to generate WhatsApp QR code';
+            });
+        }
+
+        if (connection === 'open') {
+          this.waStatus = 'CONNECTED';
+          this.waQrDataUrl = null;
+          this.waQrPayload = null;
+          this.waError = null;
+          this.waPairedDeviceName =
+            socket.user?.name || socket.user?.id.split(':')[0] || 'WhatsApp';
+        }
+
+        if (connection === 'close' && this.waSocket === socket) {
+          this.waSocket = null;
+          this.waStatus = 'DISCONNECTED';
+          this.waQrDataUrl = null;
+          this.waQrPayload = null;
+          this.waPairedDeviceName = null;
+
+          const error = lastDisconnect?.error;
+          const output =
+            error && 'output' in error ? error.output : undefined;
+          const statusCode =
+            output && typeof output === 'object' && 'statusCode' in output
+              ? output.statusCode
+              : undefined;
+
+          if (statusCode === DisconnectReason.loggedOut) {
+            this.waError = 'WhatsApp session ended. Generate a new QR code to reconnect.';
+            void rm(this.getWhatsAppAuthDir(), {
+              recursive: true,
+              force: true,
+            }).catch((removeError: unknown) => {
+              this.waError =
+                removeError instanceof Error
+                  ? removeError.message
+                  : 'Failed to clear logged-out WhatsApp session';
+            });
+          } else {
+            this.waError =
+              error instanceof Error
+                ? error.message
+                : 'WhatsApp connection closed; reconnecting';
+            this.waReconnectTimer = setTimeout(() => {
+              this.waReconnectTimer = null;
+              void this.ensureWhatsAppConnection().catch((connectError: unknown) => {
+                this.waError =
+                  connectError instanceof Error
+                    ? connectError.message
+                    : 'Failed to reconnect WhatsApp';
+              });
+            }, 1000);
+          }
+        }
+      });
+    })();
+
+    this.waStartPromise = startPromise;
+    try {
+      await startPromise;
+    } catch (error) {
+      this.waSocket = null;
+      this.waStatus = 'DISCONNECTED';
+      this.waError =
+        error instanceof Error ? error.message : 'Failed to start WhatsApp';
+      throw error;
+    } finally {
+      if (this.waStartPromise === startPromise) this.waStartPromise = null;
+    }
   }
 
-  public appendWhatsAppNotification(params: {
+  public async sendWhatsAppNotification(params: {
     eventType: string;
     message: string;
     recipientPhone?: string;
-  }): WhatsAppDeliveryLog {
+  }): Promise<WhatsAppDeliveryLog> {
     const cleanPhone = (params.recipientPhone || this.waTargetPhone).replace(
       /[^0-9]/g,
       ''
     );
     const entry: WhatsAppDeliveryLog = {
       id: `wa_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      recipientPhone: cleanPhone || '6281234567890',
+      recipientPhone: cleanPhone,
       eventType: params.eventType,
       message: params.message,
-      status:
-        this.waStatus === 'CONNECTED'
-          ? 'SENT VIA BAILEYS SOCKET ✓✓'
-          : 'QUEUED & DISPATCHED ✓',
+      status: 'NOT SENT: WhatsApp is not connected',
       timestamp: new Date().toISOString(),
     };
+
+    if (!/^\d{8,15}$/.test(cleanPhone)) {
+      entry.status = 'FAILED: Invalid recipient phone number';
+    } else if (this.waStatus === 'CONNECTED' && this.waSocket) {
+      try {
+        await this.waSocket.sendMessage(`${cleanPhone}@s.whatsapp.net`, {
+          text: params.message,
+        });
+        entry.status = 'SENT VIA BAILEYS';
+      } catch (error) {
+        entry.status = `FAILED: ${
+          error instanceof Error ? error.message : 'WhatsApp delivery failed'
+        }`;
+      }
+    }
+
     this.waLogs = [entry, ...this.waLogs].slice(0, 50);
     return entry;
   }

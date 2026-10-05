@@ -1,19 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverIntegrations } from '@/src/lib/server-integrations';
 
+export const runtime = 'nodejs';
+
 export async function GET() {
-  const qrDataUrl = await serverIntegrations.ensureQrCodeGenerated();
-  return NextResponse.json({
-    status: serverIntegrations.waStatus,
-    qrDataUrl,
-    targetPhone: serverIntegrations.waTargetPhone,
-    pairedDeviceName: serverIntegrations.waPairedDeviceName,
-    autoNotifyApprovals: serverIntegrations.waAutoNotifyApprovals,
-    autoNotifyTaskComplete: serverIntegrations.waAutoNotifyTaskComplete,
-    autoNotifyBudgetAlerts: serverIntegrations.waAutoNotifyBudgetAlerts,
-    autoNotifyPayments: serverIntegrations.waAutoNotifyPayments,
-    logs: serverIntegrations.waLogs,
-  });
+  await serverIntegrations.ensureWhatsAppConnection();
+  return NextResponse.json(
+    {
+      status: serverIntegrations.waStatus,
+      qrDataUrl: serverIntegrations.waQrDataUrl,
+      error: serverIntegrations.waError,
+      targetPhone: serverIntegrations.waTargetPhone,
+      pairedDeviceName: serverIntegrations.waPairedDeviceName,
+      autoNotifyApprovals: serverIntegrations.waAutoNotifyApprovals,
+      autoNotifyTaskComplete: serverIntegrations.waAutoNotifyTaskComplete,
+      autoNotifyBudgetAlerts: serverIntegrations.waAutoNotifyBudgetAlerts,
+      autoNotifyPayments: serverIntegrations.waAutoNotifyPayments,
+      logs: serverIntegrations.waLogs,
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -21,47 +27,27 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (body.action === 'GENERATE_QR') {
-      serverIntegrations.waStatus = 'QR_READY';
-      const qrDataUrl = await serverIntegrations.regenerateBaileysQr();
+      await serverIntegrations.ensureWhatsAppConnection();
       return NextResponse.json({
         ok: true,
         status: serverIntegrations.waStatus,
-        qrDataUrl,
-      });
-    }
-
-    if (body.action === 'CONFIRM_PAIRING') {
-      if (body.targetPhone) {
-        serverIntegrations.waTargetPhone = String(body.targetPhone).replace(
-          /[^0-9]/g,
-          ''
-        );
-      }
-      serverIntegrations.waStatus = 'CONNECTED';
-      serverIntegrations.waPairedDeviceName =
-        body.deviceName || 'WhatsApp Multi-Device (Baileys v6.7 Socket)';
-
-      serverIntegrations.appendWhatsAppNotification({
-        eventType: 'BAILEYS_SESSION_LINKED',
-        recipientPhone: serverIntegrations.waTargetPhone,
-        message: `✅ *[Baileys WhatsApp Multi-Device Terhubung]*\nPerangkat Supervisor (+${serverIntegrations.waTargetPhone}) berhasil ditautkan ke NexusOS Virtual Office. Seluruh notifikasi AI Approval, Task, Budget, dan Pembayaran Midtrans akan diteruskan otomatis ke nomor ini.`,
-      });
-
-      return NextResponse.json({
-        ok: true,
-        status: serverIntegrations.waStatus,
-        pairedDeviceName: serverIntegrations.waPairedDeviceName,
-        logs: serverIntegrations.waLogs,
+        qrDataUrl: serverIntegrations.waQrDataUrl,
+        error: serverIntegrations.waError,
       });
     }
 
     if (body.action === 'UPDATE_CONFIG') {
-      if (body.targetPhone) {
-        serverIntegrations.waTargetPhone = String(body.targetPhone).replace(
-          /[^0-9]/g,
-          ''
-        );
+      if (typeof body.targetPhone === 'string') {
+        const phone = body.targetPhone.replace(/[^0-9]/g, '');
+        if (phone && !/^\d{8,15}$/.test(phone)) {
+          return NextResponse.json(
+            { ok: false, error: 'Nomor WhatsApp harus berisi 8-15 digit.' },
+            { status: 400 }
+          );
+        }
+        serverIntegrations.waTargetPhone = phone;
       }
+
       if (typeof body.autoNotifyApprovals === 'boolean') {
         serverIntegrations.waAutoNotifyApprovals = body.autoNotifyApprovals;
       }
@@ -85,22 +71,36 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === 'SEND_NOTIFICATION') {
-      const log = serverIntegrations.appendWhatsAppNotification({
+      const log = await serverIntegrations.sendWhatsAppNotification({
         eventType: body.eventType || 'SYSTEM_NOTIFICATION',
         recipientPhone: body.targetPhone || serverIntegrations.waTargetPhone,
         message:
           body.message ||
           '🔔 Notifikasi otomatis dari NexusOS AI Virtual Office.',
       });
+      const delivered = log.status === 'SENT VIA BAILEYS';
 
-      return NextResponse.json({
-        ok: true,
-        log,
-        logs: serverIntegrations.waLogs,
-      });
+      return NextResponse.json(
+        {
+          ok: delivered,
+          log,
+          logs: serverIntegrations.waLogs,
+          error: delivered ? undefined : log.status,
+        },
+        {
+          status: delivered
+            ? 200
+            : log.status.startsWith('FAILED: Invalid')
+              ? 400
+              : 503,
+        }
+      );
     }
 
-    return NextResponse.json({ ok: true, logs: serverIntegrations.waLogs });
+    return NextResponse.json(
+      { ok: false, error: 'Unknown WhatsApp action.' },
+      { status: 400 }
+    );
   } catch (err) {
     return NextResponse.json(
       {

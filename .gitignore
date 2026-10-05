@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.baileys-auth/
 coverage/
 .DS_Store
 *.log

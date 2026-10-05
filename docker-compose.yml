@@ -4,6 +4,8 @@ services:
     build: .
     ports:
       - "3000:3000"
+    volumes:
+      - baileys-auth:/app/.baileys-auth
     environment:
       - NODE_ENV=production
       - NVIDIA_API_KEY=${NVIDIA_API_KEY}
@@ -16,3 +18,6 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
+volumes:
+  baileys-auth:
