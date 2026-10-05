@@ -12,6 +12,7 @@ export interface ServerAISettings {
   defaultProvider: AIModelProvider;
   defaultModel: string;
   nvidiaBaseUrl: string;
+  nineRouterBaseUrl: string;
   temperature: number;
   maxTokens: number;
   autoFallbackToGemini: boolean;
@@ -23,6 +24,8 @@ export interface ServerApiKeysVault {
   openaiApiKey: string;
   anthropicApiKey: string;
   openrouterApiKey: string;
+  openclawApiKey: string;
+  nineRouterApiKey: string;
   midtransServerKey: string;
   midtransClientKey: string;
 }
@@ -52,10 +55,12 @@ export interface MidtransTransactionRecord {
 
 class ServerIntegrationsManager {
   public aiSettings: ServerAISettings = {
-    defaultProvider: 'NVIDIA',
-    defaultModel: 'meta/llama-3.1-70b-instruct',
+    defaultProvider: 'NINEROUTER',
+    defaultModel: process.env.NINEROUTER_MODEL || '',
     nvidiaBaseUrl:
       process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1',
+    nineRouterBaseUrl:
+      process.env.NINEROUTER_BASE_URL || 'http://localhost:20128/v1',
     temperature: 0.6,
     maxTokens: 1024,
     autoFallbackToGemini: true,
@@ -68,6 +73,8 @@ class ServerIntegrationsManager {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+    openclawApiKey: process.env.OPENCLAW_API_KEY || '',
+    nineRouterApiKey: process.env.NINEROUTER_API_KEY || '',
     midtransServerKey: process.env.MIDTRANS_SERVER_KEY || '',
     midtransClientKey: process.env.MIDTRANS_CLIENT_KEY || '',
   };
@@ -92,6 +99,12 @@ class ServerIntegrationsManager {
       ),
       OPENROUTER: mask(
         this.apiKeys.openrouterApiKey || process.env.OPENROUTER_API_KEY || ''
+      ),
+      OPENCLAW: mask(
+        this.apiKeys.openclawApiKey || process.env.OPENCLAW_API_KEY || ''
+      ),
+      NINEROUTER: mask(
+        this.apiKeys.nineRouterApiKey || process.env.NINEROUTER_API_KEY || ''
       ),
       MIDTRANS: mask(
         this.apiKeys.midtransServerKey || process.env.MIDTRANS_SERVER_KEY || ''
@@ -161,6 +174,7 @@ class ServerIntegrationsManager {
       const socket = makeWASocket({
         auth: state,
         markOnlineOnConnect: false,
+        qrTimeout: 20_000,
       });
       this.waSocket = socket;
       this.waError = null;

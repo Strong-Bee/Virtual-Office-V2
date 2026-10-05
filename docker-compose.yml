@@ -10,6 +10,11 @@ services:
       - NODE_ENV=production
       - NVIDIA_API_KEY=${NVIDIA_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENCLAW_BASE_URL=${OPENCLAW_BASE_URL}
+      - OPENCLAW_API_KEY=${OPENCLAW_API_KEY}
+      - NINEROUTER_BASE_URL=${NINEROUTER_DOCKER_BASE_URL:-http://host.docker.internal:20128/v1}
+      - NINEROUTER_API_KEY=${NINEROUTER_API_KEY}
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis

@@ -24,6 +24,8 @@ const MODEL_CATALOG: Record<string, string[]> = {
     'deepseek/deepseek-r1',
     'anthropic/claude-3.5-sonnet',
   ],
+  OPENCLAW: ['openclaw'],
+  NINEROUTER: [],
 };
 
 export async function GET() {
@@ -51,6 +53,16 @@ export async function GET() {
         serverIntegrations.apiKeys.openrouterApiKey ||
           process.env.OPENROUTER_API_KEY
       ),
+      OPENCLAW: Boolean(
+        (serverIntegrations.apiKeys.openclawApiKey ||
+          process.env.OPENCLAW_API_KEY) &&
+          process.env.OPENCLAW_BASE_URL
+      ),
+      NINEROUTER: Boolean(
+        (serverIntegrations.apiKeys.nineRouterApiKey ||
+          process.env.NINEROUTER_API_KEY) &&
+          serverIntegrations.aiSettings.nineRouterBaseUrl
+      ),
       MIDTRANS: Boolean(
         serverIntegrations.apiKeys.midtransServerKey ||
           process.env.MIDTRANS_SERVER_KEY
@@ -62,6 +74,42 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    if (body.action === 'LIST_NINEROUTER_MODELS') {
+      const apiKey =
+        serverIntegrations.apiKeys.nineRouterApiKey ||
+        process.env.NINEROUTER_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json(
+          { ok: false, error: 'NINEROUTER_API_KEY is not configured.' },
+          { status: 400 }
+        );
+      }
+      const baseUrl = serverIntegrations.aiSettings.nineRouterBaseUrl.replace(
+        /\/+$/,
+        ''
+      );
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        return NextResponse.json(
+          { ok: false, error: `9Router model list failed (${response.status}).` },
+          { status: 502 }
+        );
+      }
+      const payload = (await response.json()) as {
+        data?: { id?: unknown }[];
+      };
+      const models = (payload.data || [])
+        .map((model) => model.id)
+        .filter(
+          (id): id is string =>
+            typeof id === 'string' && id.length > 0 && id.length <= 120
+        );
+      return NextResponse.json({ ok: true, models });
+    }
 
     // Update any non-empty API keys submitted from the Settings form
     if (body.apiKeys && typeof body.apiKeys === 'object') {
@@ -106,7 +154,6 @@ export async function POST(req: NextRequest) {
       if (body.nvidiaBaseUrl) {
         serverIntegrations.aiSettings.nvidiaBaseUrl = body.nvidiaBaseUrl;
       }
-
       const start = Date.now();
       const response = await generateAIEmployeeResponse({
         provider,
@@ -115,6 +162,7 @@ export async function POST(req: NextRequest) {
           'You are a system diagnostics node for NexusOS AI Virtual Office. Reply in 1 short sentence confirming your model status.',
         userPrompt: 'Ping test connection and confirm operational readiness.',
         temperature: 0.3,
+        disableFallback: true,
       });
       const latencyMs = Date.now() - start;
 
@@ -145,6 +193,16 @@ export async function POST(req: NextRequest) {
             serverIntegrations.apiKeys.openrouterApiKey ||
               process.env.OPENROUTER_API_KEY
           ),
+          OPENCLAW: Boolean(
+            (serverIntegrations.apiKeys.openclawApiKey ||
+              process.env.OPENCLAW_API_KEY) &&
+              process.env.OPENCLAW_BASE_URL
+          ),
+          NINEROUTER: Boolean(
+            (serverIntegrations.apiKeys.nineRouterApiKey ||
+              process.env.NINEROUTER_API_KEY) &&
+              serverIntegrations.aiSettings.nineRouterBaseUrl
+          ),
           MIDTRANS: Boolean(
             serverIntegrations.apiKeys.midtransServerKey ||
               process.env.MIDTRANS_SERVER_KEY
@@ -157,11 +215,28 @@ export async function POST(req: NextRequest) {
     if (body.defaultProvider) {
       serverIntegrations.aiSettings.defaultProvider = body.defaultProvider;
     }
-    if (body.defaultModel) {
+    if (typeof body.defaultModel === 'string' && body.defaultModel.trim()) {
       serverIntegrations.aiSettings.defaultModel = body.defaultModel;
     }
     if (body.nvidiaBaseUrl) {
       serverIntegrations.aiSettings.nvidiaBaseUrl = body.nvidiaBaseUrl;
+    }
+    if (
+      body.defaultProvider &&
+      ![
+        'NVIDIA',
+        'GEMINI',
+        'OPENAI',
+        'ANTHROPIC',
+        'OPENROUTER',
+        'OPENCLAW',
+        'NINEROUTER',
+      ].includes(body.defaultProvider)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: 'Unsupported AI provider.' },
+        { status: 400 }
+      );
     }
     if (typeof body.temperature === 'number') {
       serverIntegrations.aiSettings.temperature = body.temperature;
@@ -197,6 +272,16 @@ export async function POST(req: NextRequest) {
         OPENROUTER: Boolean(
           serverIntegrations.apiKeys.openrouterApiKey ||
             process.env.OPENROUTER_API_KEY
+        ),
+        OPENCLAW: Boolean(
+          (serverIntegrations.apiKeys.openclawApiKey ||
+            process.env.OPENCLAW_API_KEY) &&
+            process.env.OPENCLAW_BASE_URL
+        ),
+        NINEROUTER: Boolean(
+          (serverIntegrations.apiKeys.nineRouterApiKey ||
+            process.env.NINEROUTER_API_KEY) &&
+            serverIntegrations.aiSettings.nineRouterBaseUrl
         ),
         MIDTRANS: Boolean(
           serverIntegrations.apiKeys.midtransServerKey ||

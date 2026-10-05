@@ -4,7 +4,15 @@ import { generateAIEmployeeResponse } from '@/src/ai/providers';
 
 const ChatRequestSchema = z.object({
   provider: z
-    .enum(['NVIDIA', 'GEMINI', 'OPENAI', 'ANTHROPIC', 'OPENROUTER'])
+    .enum([
+      'NVIDIA',
+      'GEMINI',
+      'OPENAI',
+      'ANTHROPIC',
+      'OPENROUTER',
+      'OPENCLAW',
+      'NINEROUTER',
+    ])
     .optional(),
   modelName: z.string().max(120).optional(),
   systemPrompt: z.string().min(1).max(3000),
@@ -47,7 +55,7 @@ export async function POST(
         error:
           error instanceof Error
             ? error.message
-            : '🤖 AI temporarily unavailable. The task has been paused.',
+            : 'AI temporarily unavailable. The task has been paused.',
       },
       { status: 500 }
     );

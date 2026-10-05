@@ -52,12 +52,13 @@ export function UnifiedSettingsAndIntegrationsView() {
 
   // 1. AI Model & API Settings State
   const [selectedProvider, setSelectedProvider] =
-    useState<AIModelProvider>('NVIDIA');
-  const [selectedModel, setSelectedModel] = useState(
-    'meta/llama-3.1-70b-instruct'
-  );
+    useState<AIModelProvider>('NINEROUTER');
+  const [selectedModel, setSelectedModel] = useState('');
   const [nvidiaEndpoint, setNvidiaEndpoint] = useState(
     'https://integrate.api.nvidia.com/v1'
+  );
+  const [nineRouterEndpoint, setNineRouterEndpoint] = useState(
+    'http://localhost:20128/v1'
   );
   const [temperature, setTemperature] = useState(0.6);
   const [maxTokens, setMaxTokens] = useState(1024);
@@ -74,7 +75,14 @@ export function UnifiedSettingsAndIntegrationsView() {
     GEMINI: ['gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash'],
     OPENAI: ['gpt-4o', 'gpt-4o-mini'],
     ANTHROPIC: ['claude-3-5-sonnet-latest'],
-    OPENROUTER: ['meta-llama/llama-3.1-70b-instruct'],
+    OPENROUTER: [
+      'openrouter/auto',
+      'meta-llama/llama-3.1-70b-instruct',
+      'deepseek/deepseek-r1',
+      'anthropic/claude-3.5-sonnet',
+    ],
+    OPENCLAW: ['openclaw'],
+    NINEROUTER: [],
   });
   const [providersStatus, setProvidersStatus] = useState<
     Record<string, boolean>
@@ -132,12 +140,15 @@ export function UnifiedSettingsAndIntegrationsView() {
       .then((r) => r.json())
       .then((data) => {
         if (data.settings) {
-          setSelectedProvider(data.settings.defaultProvider || 'NVIDIA');
+          setSelectedProvider(data.settings.defaultProvider || 'NINEROUTER');
           setSelectedModel(
-            data.settings.defaultModel || 'meta/llama-3.1-70b-instruct'
+            data.settings.defaultModel || ''
           );
           setNvidiaEndpoint(
             data.settings.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1'
+          );
+          setNineRouterEndpoint(
+            data.settings.nineRouterBaseUrl || 'http://localhost:20128/v1'
           );
           setTemperature(data.settings.temperature ?? 0.6);
           setMaxTokens(data.settings.maxTokens ?? 1024);
@@ -480,8 +491,8 @@ export function UnifiedSettingsAndIntegrationsView() {
                   Global AI Provider & Model Routing
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Configure NVIDIA NIM, Google Gemini, OpenAI, Anthropic, or
-                  OpenRouter endpoints for your AI Workforce.
+                  Configure NVIDIA NIM, Google Gemini, OpenAI, Anthropic,
+                  OpenRouter, 9Router Proxy, or an OpenClaw-compatible gateway.
                 </p>
               </div>
             </div>
@@ -508,6 +519,8 @@ export function UnifiedSettingsAndIntegrationsView() {
                   <option value="OPENAI">OpenAI Compatible API</option>
                   <option value="ANTHROPIC">Anthropic Claude API</option>
                   <option value="OPENROUTER">OpenRouter Unified Gateway</option>
+                  <option value="OPENCLAW">OpenClaw Gateway</option>
+                  <option value="NINEROUTER">9Router Proxy</option>
                 </select>
               </div>
 
@@ -529,6 +542,26 @@ export function UnifiedSettingsAndIntegrationsView() {
                 </datalist>
               </div>
             </div>
+
+            {selectedProvider === 'NINEROUTER' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  9Router Proxy Base URL
+                </label>
+                <input
+                  type="url"
+                  value={nineRouterEndpoint}
+                  readOnly
+                  placeholder="http://localhost:20128/v1"
+                  className="w-full min-h-[44px] bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Atur <code>NINEROUTER_BASE_URL</code> di environment server
+                  (local atau URL tunnel yang diberikan), lalu restart. URL
+                  tidak diubah lewat browser.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="sm:col-span-2">
@@ -631,6 +664,44 @@ export function UnifiedSettingsAndIntegrationsView() {
                   <strong>Save & Apply</strong> atau{' '}
                   <strong>Test API Connection</strong>.
                 </p>
+                <p className="mt-2 text-[11px] text-slate-400">
+                  OpenClaw memakai secret server <code>OPENCLAW_BASE_URL</code>{' '}
+                  dan <code>OPENCLAW_API_KEY</code> agar gateway tidak terekspos
+                  di browser.
+                </p>
+                <p className="mt-2 text-[11px] text-slate-400">
+                  9Router Proxy memakai secret server <code>NINEROUTER_API_KEY</code>.
+                  Atur di <code>.env</code> (lokal) atau secret deployment, lalu
+                  restart server. URL proxy dapat diatur di panel model.
+                </p>
+                <div className="mt-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[11px]">
+                  <span className="text-slate-300">OpenClaw Gateway</span>
+                  <span
+                    className={
+                      providersStatus.OPENCLAW
+                        ? 'font-mono text-emerald-400'
+                        : 'font-mono text-amber-400'
+                    }
+                  >
+                    {providersStatus.OPENCLAW
+                      ? `Active (${maskedKeys.OPENCLAW || 'key configured'})`
+                      : 'Configure server environment'}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[11px]">
+                  <span className="text-slate-300">9Router Proxy</span>
+                  <span
+                    className={
+                      providersStatus.NINEROUTER
+                        ? 'font-mono text-emerald-400'
+                        : 'font-mono text-amber-400'
+                    }
+                  >
+                    {providersStatus.NINEROUTER
+                      ? `Active (${maskedKeys.NINEROUTER || 'key configured'})`
+                      : 'Add proxy API key'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -823,6 +894,11 @@ export function UnifiedSettingsAndIntegrationsView() {
                 className="w-full rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-left text-xs text-rose-300"
               >
                 {waError}
+              </p>
+            )}
+            {waStatus === 'QR_READY' && (
+              <p className="w-full text-center text-xs text-slate-400">
+                QR diperbarui otomatis setiap 20 detik jika belum dipindai.
               </p>
             )}
           </div>

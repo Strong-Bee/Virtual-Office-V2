@@ -6,6 +6,7 @@ import { soundFX } from '@/src/lib/sound';
 import {
   Mic,
   MicOff,
+  Bot,
   Video,
   VideoOff,
   MonitorUp,
@@ -200,8 +201,8 @@ export function MeetingRoomOverlay() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-full bg-emerald-600 flex items-center justify-center text-lg font-bold text-white">
-                  {(currentUser?.displayName || 'U')[0]}
+                <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center text-white">
+                  <Bot className="w-8 h-8" aria-hidden="true" />
                 </div>
               )}
               <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-xs bg-slate-950/80 px-2.5 py-1 rounded">
@@ -240,7 +241,7 @@ export function MeetingRoomOverlay() {
                   className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shadow-inner mb-2"
                   style={{ backgroundColor: ai.avatarColor }}
                 >
-                  🤖
+                  <Bot className="w-7 h-7 text-white" aria-hidden="true" />
                 </div>
                 <div className="text-xs font-semibold text-white">
                   {ai.name} AI

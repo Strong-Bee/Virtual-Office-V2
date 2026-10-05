@@ -229,7 +229,7 @@
         },
         "modelProvider": {
           "type": "string",
-          "enum": ["NVIDIA", "GEMINI", "OPENAI", "ANTHROPIC", "OPENROUTER"],
+          "enum": ["NVIDIA", "GEMINI", "OPENAI", "ANTHROPIC", "OPENROUTER", "OPENCLAW", "NINEROUTER"],
           "maxLength": 32
         },
         "modelName": {

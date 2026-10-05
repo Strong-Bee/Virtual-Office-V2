@@ -19,7 +19,9 @@ export type AIModelProvider =
   | 'GEMINI'
   | 'OPENAI'
   | 'ANTHROPIC'
-  | 'OPENROUTER';
+  | 'OPENROUTER'
+  | 'OPENCLAW'
+  | 'NINEROUTER';
 
 export type AIStatus =
   | 'WORKING'

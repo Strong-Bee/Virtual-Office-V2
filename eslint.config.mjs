@@ -4,11 +4,10 @@ import firebaseRulesPlugin from "@firebase/eslint-plugin-security-rules";
 
 export default defineConfig([
   {
-    ignores: ["dist/**/*", ".next/**/*"],
+    ignores: ["dist/**/*", ".next/**/*", ".next-verify/**/*"],
   },
   {
     extends: [...next],
   },
   firebaseRulesPlugin.configs["flat/recommended"],
 ]);
-

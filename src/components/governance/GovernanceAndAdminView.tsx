@@ -5,6 +5,7 @@ import { useAppStore } from '@/src/store/useAppStore';
 import { toggleEmergencyPauseAllAI } from '@/src/lib/firestore-actions';
 import { soundFX } from '@/src/lib/sound';
 import {
+  Bot,
   ShieldAlert,
   Lock,
   Activity,
@@ -200,7 +201,7 @@ export function GovernanceAndAdminView({
                 {activityLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-950/60">
                     <td className="py-2.5 px-3 font-medium text-white whitespace-nowrap">
-                      🤖 {log.aiEmployeeName}
+                      {log.aiEmployeeName}
                     </td>
                     <td className="py-2.5 px-3 text-slate-200">{log.action}</td>
                     <td className="py-2.5 px-3 text-slate-400 max-w-md truncate">
@@ -311,10 +312,13 @@ export function GovernanceAndAdminView({
                       {d.name}
                     </td>
                     <td className="py-3 px-3 text-slate-300">
-                      👨 {d.supervisorName}
+                      <span className="inline-flex items-center gap-1">
+                        <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                        {d.supervisorName}
+                      </span>
                     </td>
                     <td className="py-3 px-3 text-slate-300 font-mono">
-                      {dAIs.map((a) => `🤖 ${a.name}`).join(', ')}
+                      {dAIs.map((a) => a.name).join(', ')}
                     </td>
                     <td className="py-3 px-3 text-right font-mono tabular-nums text-emerald-400">
                       ${dSpend.toFixed(2)}

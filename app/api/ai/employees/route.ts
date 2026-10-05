@@ -30,6 +30,16 @@ export async function GET() {
         name: 'OpenRouter Unified API',
         defaultModel: 'meta-llama/llama-3.1-70b-instruct',
       },
+      {
+        id: 'OPENCLAW',
+        name: 'OpenClaw OpenAI-Compatible Gateway',
+        defaultModel: 'openclaw',
+      },
+      {
+        id: 'NINEROUTER',
+        name: '9Router Proxy (OpenAI-compatible)',
+        defaultModel: 'openrouter/auto',
+      },
     ],
   });
 }

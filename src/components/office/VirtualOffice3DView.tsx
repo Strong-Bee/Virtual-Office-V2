@@ -1,7 +1,9 @@
 'use client';
 
-import { Canvas } from '@react-three/fiber';
-import { Grid, OrbitControls } from '@react-three/drei';
+import { useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Billboard, Grid, OrbitControls, Text } from '@react-three/drei';
+import type { Group } from 'three';
 import { AIEmployee, MapObjectItem, OfficeMapData, PlayerPresence } from '@/src/types';
 
 const STATUS_COLORS: Record<AIEmployee['status'], string> = {
@@ -44,18 +46,108 @@ function OfficeObject({ object }: { object: MapObjectItem }) {
   );
 }
 
+function RobotAvatar({
+  position,
+  color,
+  label,
+  bubble,
+}: {
+  position: [number, number, number];
+  color: string;
+  label: string;
+  bubble?: { text: string; expiresAt: number };
+}) {
+  const bubbleRef = useRef<Group>(null);
+  useFrame(() => {
+    if (bubbleRef.current) {
+      bubbleRef.current.visible = Boolean(
+        bubble && Date.now() < bubble.expiresAt
+      );
+    }
+  });
+
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.3, 0]} castShadow>
+        <boxGeometry args={[0.48, 0.38, 0.34]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <mesh position={[0, 0.72, 0]} castShadow>
+        <boxGeometry args={[0.62, 0.48, 0.44]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <mesh position={[0, 0.72, 0.228]}>
+        <boxGeometry args={[0.48, 0.28, 0.025]} />
+        <meshStandardMaterial color="#0f172a" />
+      </mesh>
+      {[-0.12, 0.12].map((x) => (
+        <mesh key={x} position={[x, 0.75, 0.25]}>
+          <sphereGeometry args={[0.045, 12, 12]} />
+          <meshStandardMaterial
+            color="#67e8f9"
+            emissive="#0891b2"
+            emissiveIntensity={1.5}
+          />
+        </mesh>
+      ))}
+      <mesh position={[0, 1.02, 0]} castShadow>
+        <cylinderGeometry args={[0.02, 0.02, 0.14, 8]} />
+        <meshStandardMaterial color="#cbd5e1" />
+      </mesh>
+      <mesh position={[0, 1.11, 0]} castShadow>
+        <sphereGeometry args={[0.045, 12, 12]} />
+        <meshStandardMaterial
+          color="#22d3ee"
+          emissive="#0891b2"
+          emissiveIntensity={1.5}
+        />
+      </mesh>
+      <Text
+        position={[0, 1.35, 0]}
+        fontSize={0.16}
+        anchorX="center"
+        anchorY="bottom"
+        color="#f1f5f9"
+        outlineWidth={0.015}
+        outlineColor="#020617"
+      >
+        {label}
+      </Text>
+      <Billboard ref={bubbleRef} visible={false} position={[0, 1.7, 0]}>
+        <mesh>
+          <planeGeometry args={[1.9, 0.6]} />
+          <meshBasicMaterial color="#07111f" />
+        </mesh>
+        <Text
+          position={[0, 0, 0.02]}
+          fontSize={0.12}
+          maxWidth={1.7}
+          textAlign="center"
+          anchorX="center"
+          anchorY="middle"
+          color="#f8fafc"
+        >
+          {bubble?.text || ''}
+        </Text>
+      </Billboard>
+    </group>
+  );
+}
+
 export function VirtualOffice3DView({
   officeMap,
   aiEmployees,
   players,
   localPlayerPos,
   currentUserId,
+  speechBubbles,
 }: {
   officeMap: OfficeMapData;
   aiEmployees: AIEmployee[];
   players: Record<string, PlayerPresence>;
   localPlayerPos: { x: number; y: number };
   currentUserId: string;
+  speechBubbles: Record<string, { text: string; expiresAt: number }>;
 }) {
   const center = [officeMap.width / 2, 0, officeMap.height / 2] as const;
 
@@ -115,36 +207,29 @@ export function VirtualOffice3DView({
           <OfficeObject key={object.id} object={object} />
         ))}
         {aiEmployees.map((employee) => (
-          <mesh
+          <RobotAvatar
             key={employee.id}
-            position={[employee.x / 32, 0.45, employee.y / 32]}
-            castShadow
-          >
-            <capsuleGeometry args={[0.28, 0.5, 4, 8]} />
-            <meshStandardMaterial
-              color={STATUS_COLORS[employee.status] || '#10b981'}
-            />
-          </mesh>
+            position={[employee.x / 32, 0, employee.y / 32]}
+            color={STATUS_COLORS[employee.status] || '#10b981'}
+            label={employee.name}
+            bubble={speechBubbles[employee.id]}
+          />
         ))}
         {Object.values(players)
           .filter((player) => player.uid !== currentUserId)
           .map((player) => (
-            <mesh
+            <RobotAvatar
               key={player.uid}
-              position={[player.x / 32, 0.4, player.y / 32]}
-              castShadow
-            >
-              <capsuleGeometry args={[0.25, 0.45, 4, 8]} />
-              <meshStandardMaterial color={player.avatarColor || '#3b82f6'} />
-            </mesh>
+              position={[player.x / 32, 0, player.y / 32]}
+              color={player.avatarColor || '#3b82f6'}
+              label={player.displayName}
+            />
           ))}
-        <mesh
-          position={[localPlayerPos.x / 32, 0.45, localPlayerPos.y / 32]}
-          castShadow
-        >
-          <capsuleGeometry args={[0.28, 0.5, 4, 8]} />
-          <meshStandardMaterial color="#10b981" />
-        </mesh>
+        <RobotAvatar
+          position={[localPlayerPos.x / 32, 0, localPlayerPos.y / 32]}
+          color="#10b981"
+          label="You"
+        />
         <OrbitControls
           makeDefault
           target={center}

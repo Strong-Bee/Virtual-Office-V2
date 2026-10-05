@@ -280,7 +280,7 @@ export async function recordAIActivityLog(params: {
       body: JSON.stringify({
         action: 'SEND_NOTIFICATION',
         eventType: `AI_${params.status}`,
-        message: `🔔 *[NexusOS AI Workforce Alert]*\n🤖 Agent: *${params.aiEmployeeName}*\n📌 Action: ${params.action}\n⚠️ Risk: ${params.riskLevel} | Status: *${params.status}*\n📄 Detail: ${params.details.slice(
+        message: `🔔 *[NexusOS AI Workforce Alert]*\nAgent: *${params.aiEmployeeName}*\n📌 Action: ${params.action}\n⚠️ Risk: ${params.riskLevel} | Status: *${params.status}*\n📄 Detail: ${params.details.slice(
           0,
           140
         )}`,

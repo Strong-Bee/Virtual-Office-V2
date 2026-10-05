@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import * as PIXI from 'pixi.js';
 import gsap from 'gsap';
@@ -8,9 +8,14 @@ import { motion } from 'motion/react';
 import { useAppStore } from '@/src/store/useAppStore';
 import { syncPlayerPresence, updateAIEmployeeState } from '@/src/lib/firestore-actions';
 import { soundFX } from '@/src/lib/sound';
-import { AIEmployee, MapObjectItem } from '@/src/types';
+import {
+  AIEmployee,
+  MapObjectItem,
+  MapRoomZone,
+} from '@/src/types';
 import {
   Box,
+  Bot,
   Compass,
   ListChecks,
   MessageSquare,
@@ -63,24 +68,27 @@ const MAP_OBJECT_COLOR: Partial<Record<MapObjectItem['type'], number>> = {
   plant: 0x14532d,
 };
 
-const MAP_OBJECT_ICON: Partial<Record<MapObjectItem['type'], string>> = {
-  desk: '🪑',
-  computer: '💻',
-  meeting_table: '🎥',
-  whiteboard: '📋',
-  coffee_machine: '☕',
-  server_rack: '🖧',
-  bookshelf: '📚',
-  tv: '📊',
-  sofa: '🛋️',
-  printer: '🖨️',
-  plant: '🌿',
-};
-
 const hexToNumber = (value: string, fallback = 0x10b981) => {
   const parsed = Number.parseInt(value.replace('#', ''), 16);
   return Number.isNaN(parsed) ? fallback : parsed;
 };
+
+function timestampToMillis(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Date.parse(value) || 0;
+  if (value && typeof value === 'object') {
+    const timestamp = value as {
+      toMillis?: () => number;
+      toDate?: () => Date;
+      seconds?: number;
+    };
+    if (typeof timestamp.toMillis === 'function') return timestamp.toMillis();
+    if (typeof timestamp.toDate === 'function') return timestamp.toDate().getTime();
+    if (typeof timestamp.seconds === 'number') return timestamp.seconds * 1000;
+  }
+  return 0;
+}
 
 export function VirtualOfficeCanvas() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -93,10 +101,31 @@ export function VirtualOfficeCanvas() {
   const officeMap = useAppStore((state) => state.officeMap);
   const aiEmployees = useAppStore((state) => state.aiEmployees);
   const players = useAppStore((state) => state.players);
+  const messages = useAppStore((state) => state.messages);
   const localPlayerPos = useAppStore((state) => state.localPlayerPos);
   const nearbyAIEmployee = useAppStore((state) => state.nearbyAIEmployee);
   const nearbyObject = useAppStore((state) => state.nearbyObject);
   const inMeetingRoom = useAppStore((state) => state.inMeetingRoom);
+  const aiSpeechBubbles = useMemo(() => {
+    const bubbles: Record<
+      string,
+      { id: string; text: string; expiresAt: number; createdAt: number }
+    > = {};
+    for (const message of messages) {
+      if (message.senderType !== 'AI' || message.channelType !== 'ROOM') continue;
+      const createdAt = timestampToMillis(message.createdAt);
+      if (!createdAt) continue;
+      if (bubbles[message.senderId]?.createdAt >= createdAt) continue;
+      const text = message.content.replace(/\s+/g, ' ').trim();
+      bubbles[message.senderId] = {
+        id: message.id,
+        text: text.length > 64 ? `${text.slice(0, 61)}...` : text,
+        expiresAt: createdAt + 7000,
+        createdAt,
+      };
+    }
+    return bubbles;
+  }, [messages]);
 
   const setLocalPlayerPos = useAppStore((state) => state.setLocalPlayerPos);
   const setNearbyAIEmployee = useAppStore((state) => state.setNearbyAIEmployee);
@@ -117,6 +146,8 @@ export function VirtualOfficeCanvas() {
     map: officeMap,
     ais: aiEmployees,
     remotePlayers: players,
+    messages,
+    aiSpeechBubbles,
     uid: currentUser?.uid || 'local_guest',
     displayName: currentUser?.displayName || 'Supervisor',
     role: currentUser?.role || 'DEPARTMENT_SUPERVISOR',
@@ -130,6 +161,8 @@ export function VirtualOfficeCanvas() {
       map: officeMap,
       ais: aiEmployees,
       remotePlayers: players,
+      messages,
+      aiSpeechBubbles,
       uid: currentUser?.uid || 'local_guest',
       displayName: currentUser?.displayName || 'Supervisor',
       role: currentUser?.role || 'DEPARTMENT_SUPERVISOR',
@@ -137,7 +170,16 @@ export function VirtualOfficeCanvas() {
       status: localPlayerPos.status,
       inCall: inMeetingRoom,
     };
-  }, [officeMap, aiEmployees, players, currentUser, localPlayerPos.status, inMeetingRoom]);
+  }, [
+    officeMap,
+    aiEmployees,
+    players,
+    messages,
+    aiSpeechBubbles,
+    currentUser,
+    localPlayerPos.status,
+    inMeetingRoom,
+  ]);
 
   const updateZoom = useCallback((value: number) => {
     const zoom = Math.round(Math.min(2, Math.max(0.5, value)) * 10) / 10;
@@ -244,7 +286,8 @@ export function VirtualOfficeCanvas() {
         text: string,
         fontSize: number,
         fill: string,
-        bold = false
+        bold = false,
+        wordWrapWidth?: number
       ) =>
         new PIXI.Text({
           text,
@@ -253,19 +296,21 @@ export function VirtualOfficeCanvas() {
             fontSize,
             fill,
             fontWeight: bold ? 'bold' : 'normal',
+            wordWrap: wordWrapWidth !== undefined,
+            wordWrapWidth,
           },
         });
 
       const background = new PIXI.Graphics()
         .rect(0, 0, worldWidth, worldHeight)
-        .fill({ color: 0x0b0f19 })
-        .stroke({ color: 0x1e293b, width: 2 })
+        .fill({ color: 0x0a101b })
+        .stroke({ color: 0x26364a, width: 2 });
       world.addChild(background);
 
       const floorGrid = new PIXI.Graphics().setStrokeStyle({
         width: 1,
-        color: 0x1e293b,
-        alpha: 0.35,
+        color: 0x64748b,
+        alpha: 0.12,
       });
       for (let x = 0; x <= worldWidth; x += mapData.tileSize) {
         floorGrid.moveTo(x, 0).lineTo(x, worldHeight);
@@ -282,15 +327,60 @@ export function VirtualOfficeCanvas() {
         const width = room.width * mapData.tileSize;
         const height = room.height * mapData.tileSize;
         const color = hexToNumber(room.floorColor, 0x172033);
+        const categoryColor: Record<MapRoomZone['category'], number> = {
+          LOBBY: 0x14b8a6,
+          WORKSPACE: 0x3b82f6,
+          MEETING_ROOM: 0x8b5cf6,
+          LOUNGE: 0xf59e0b,
+          PRIVATE_OFFICE: 0x06b6d4,
+          SERVER_ROOM: 0x10b981,
+          OUTDOOR: 0x22c55e,
+        };
+        const accent = categoryColor[room.category];
+        const roomShadow = new PIXI.Graphics()
+          .roundRect(x + 1, y + 4, width - 2, height - 2, 8)
+          .fill({ color: 0x020617, alpha: 0.55 });
+        world.addChild(roomShadow);
         const floor = new PIXI.Graphics()
-          .roundRect(x + 2, y + 2, width - 4, height - 4, 6)
-          .fill({ color, alpha: 0.75 })
-          .stroke({ color: 0x334155, width: 2, alpha: 0.9 });
+          .roundRect(x + 2, y + 2, width - 4, height - 4, 8)
+          .fill({ color, alpha: 0.92 })
+          .stroke({ color: accent, width: 1.5, alpha: 0.42 });
         world.addChild(floor);
 
-        const roomLabel = makeText(room.name.toUpperCase(), 11, '#94a3b8', true);
-        roomLabel.position.set(x + 12, y + 8);
+        const roomGrid = new PIXI.Graphics().setStrokeStyle({
+          width: 1,
+          color: 0xcbd5e1,
+          alpha: 0.055,
+        });
+        for (let tileX = x + mapData.tileSize; tileX < x + width; tileX += mapData.tileSize) {
+          roomGrid.moveTo(tileX, y + 34).lineTo(tileX, y + height - 3);
+        }
+        for (let tileY = y + mapData.tileSize; tileY < y + height; tileY += mapData.tileSize) {
+          roomGrid.moveTo(x + 3, tileY).lineTo(x + width - 3, tileY);
+        }
+        roomGrid.stroke();
+        world.addChild(roomGrid);
+
+        const roomHeader = new PIXI.Graphics()
+          .roundRect(x + 10, y + 9, Math.min(width - 20, 250), 25, 6)
+          .fill({ color: 0x0b1220, alpha: 0.9 })
+          .stroke({ color: 0x475569, width: 1, alpha: 0.55 });
+        world.addChild(roomHeader);
+        const roomAccent = new PIXI.Graphics()
+          .roundRect(x + 15, y + 15, 3, 13, 1.5)
+          .fill(accent);
+        world.addChild(roomAccent);
+        const roomLabel = makeText(room.name.toUpperCase(), 10, '#e2e8f0', true);
+        roomLabel.position.set(x + 24, y + 15);
         world.addChild(roomLabel);
+
+        const roomWalls = new PIXI.Graphics()
+          .moveTo(x + 4, y + 39)
+          .lineTo(x + 4, y + height - 5)
+          .moveTo(x + 4, y + 39)
+          .lineTo(x + width - 5, y + 39)
+          .stroke({ color: accent, width: 2, alpha: 0.2 });
+        world.addChild(roomWalls);
       }
 
       for (const portal of mapData.portals) {
@@ -309,7 +399,7 @@ export function VirtualOfficeCanvas() {
           yoyo: true,
           ease: 'sine.inOut',
         });
-        const label = makeText(`⚡ ${portal.label}`, 10, '#67e8f9');
+        const label = makeText(portal.label, 10, '#a5f3fc', true);
         label.anchor.set(0.5);
         label.position.set(x, y - 22);
         world.addChild(label);
@@ -320,15 +410,147 @@ export function VirtualOfficeCanvas() {
         const y = object.y * mapData.tileSize;
         const width = object.width * mapData.tileSize;
         const height = object.height * mapData.tileSize;
-        const graphic = new PIXI.Graphics()
-          .roundRect(x + 2, y + 2, width - 4, height - 4, 5)
-          .fill({ color: MAP_OBJECT_COLOR[object.type] || 0x334155, alpha: 0.95 })
-          .stroke({ color: 0x64748b, width: 1.5, alpha: 0.9 });
+        const color = MAP_OBJECT_COLOR[object.type] || 0x334155;
+        const graphic = new PIXI.Graphics();
+        const left = x + 3;
+        const top = y + 3;
+        const objectWidth = width - 6;
+        const objectHeight = height - 6;
+        const centerX = x + width / 2;
+        const centerY = y + height / 2;
+
+        graphic
+          .roundRect(left, top + 3, objectWidth, objectHeight, 5)
+          .fill({ color: 0x020617, alpha: 0.42 })
+          .roundRect(left, top, objectWidth, objectHeight - 3, 5)
+          .fill({ color, alpha: 0.96 })
+          .stroke({ color: 0x94a3b8, width: 1, alpha: 0.55 });
+
+        switch (object.type) {
+          case 'computer':
+          case 'tv': {
+            const screenWidth = Math.min(objectWidth - 10, 34);
+            graphic
+              .roundRect(centerX - screenWidth / 2, centerY - 9, screenWidth, 15, 2)
+              .fill(0x0b1220)
+              .stroke({ color: 0x94a3b8, width: 1, alpha: 0.7 })
+              .roundRect(centerX - screenWidth / 2 + 2, centerY - 7, screenWidth - 4, 9, 1)
+              .fill({ color: object.type === 'tv' ? 0x22d3ee : 0x38bdf8, alpha: 0.68 })
+              .moveTo(centerX, centerY + 6)
+              .lineTo(centerX, centerY + 10)
+              .moveTo(centerX - 5, centerY + 10)
+              .lineTo(centerX + 5, centerY + 10)
+              .stroke({ color: 0xe2e8f0, width: 1.2, alpha: 0.85 });
+            break;
+          }
+          case 'desk':
+          case 'chair':
+            graphic
+              .moveTo(left + 4, centerY)
+              .lineTo(left + objectWidth - 4, centerY)
+              .stroke({ color: 0xe2e8f0, width: 1.2, alpha: 0.38 })
+              .roundRect(left + 5, top + 5, 8, 5, 1)
+              .fill({ color: 0xf8fafc, alpha: 0.28 });
+            break;
+          case 'meeting_table':
+            graphic
+              .roundRect(left + 5, top + 5, objectWidth - 10, objectHeight - 10, 7)
+              .fill({ color: 0x1e3a8a, alpha: 0.9 })
+              .stroke({ color: 0xbfdbfe, width: 1, alpha: 0.7 })
+              .moveTo(left + 12, centerY)
+              .lineTo(left + objectWidth - 12, centerY)
+              .stroke({ color: 0x93c5fd, width: 1, alpha: 0.55 });
+            for (let seatX = left + 9; seatX < left + objectWidth - 6; seatX += 18) {
+              graphic.circle(seatX, top + 2, 2.5).fill(0xcbd5e1);
+              graphic.circle(seatX, top + objectHeight - 2, 2.5).fill(0xcbd5e1);
+            }
+            break;
+          case 'whiteboard':
+            graphic
+              .roundRect(left + 4, top + 4, objectWidth - 8, objectHeight - 8, 2)
+              .fill(0xf8fafc)
+              .stroke({ color: 0xcbd5e1, width: 1 })
+              .moveTo(left + 9, centerY)
+              .lineTo(left + objectWidth - 9, centerY)
+              .stroke({ color: 0x38bdf8, width: 1.5, alpha: 0.75 });
+            break;
+          case 'coffee_machine':
+            graphic
+              .roundRect(centerX - 7, top + 4, 14, objectHeight - 8, 3)
+              .fill(0x1f2937)
+              .stroke({ color: 0xfbbf24, width: 1, alpha: 0.8 })
+              .circle(centerX, top + 8, 1.5)
+              .fill(0xfbbf24)
+              .roundRect(centerX + 4, centerY + 1, 5, 5, 1)
+              .fill(0xf8fafc);
+            break;
+          case 'server_rack':
+            for (let rackY = top + 5; rackY < top + objectHeight - 4; rackY += 7) {
+              graphic
+                .roundRect(left + 5, rackY, objectWidth - 10, 5, 1)
+                .fill(0x0b1220)
+                .stroke({ color: 0x64748b, width: 0.7, alpha: 0.8 })
+                .circle(left + objectWidth - 9, rackY + 2.5, 1)
+                .fill(0x34d399);
+            }
+            break;
+          case 'bookshelf':
+            graphic
+              .moveTo(left + 4, centerY)
+              .lineTo(left + objectWidth - 4, centerY)
+              .stroke({ color: 0xc4b5fd, width: 1.5, alpha: 0.7 });
+            for (let bookX = left + 6; bookX < left + objectWidth - 5; bookX += 7) {
+              graphic
+                .roundRect(bookX, top + 5, 4, objectHeight - 12, 1)
+                .fill([0xc4b5fd, 0x67e8f9, 0xfbbf24][Math.floor(bookX) % 3]);
+            }
+            break;
+          case 'sofa':
+            graphic
+              .roundRect(left + 4, top + 4, objectWidth - 8, 7, 3)
+              .fill(0x6366f1)
+              .roundRect(left + 7, centerY - 1, objectWidth - 14, objectHeight / 2, 3)
+              .fill(0x818cf8)
+              .stroke({ color: 0xc7d2fe, width: 1, alpha: 0.6 });
+            break;
+          case 'printer':
+            graphic
+              .roundRect(centerX - 9, top + 5, 18, objectHeight - 10, 3)
+              .fill(0x1e293b)
+              .stroke({ color: 0xe2e8f0, width: 1, alpha: 0.5 })
+              .moveTo(centerX - 5, centerY + 2)
+              .lineTo(centerX + 5, centerY + 2)
+              .stroke({ color: 0x22d3ee, width: 1.5 });
+            break;
+          case 'plant':
+            graphic
+              .roundRect(centerX - 5, centerY + 1, 10, 8, 2)
+              .fill(0xb45309)
+              .moveTo(centerX, centerY + 2)
+              .lineTo(centerX, centerY - 7)
+              .stroke({ color: 0x86efac, width: 1.5 })
+              .ellipse(centerX - 4, centerY - 5, 4, 2)
+              .fill(0x22c55e)
+              .ellipse(centerX + 4, centerY - 8, 4, 2)
+              .fill(0x4ade80);
+            break;
+          case 'door':
+            graphic
+              .roundRect(left + 6, top + 3, objectWidth - 12, objectHeight - 6, 2)
+              .fill(0x0f172a)
+              .stroke({ color: 0xcbd5e1, width: 1, alpha: 0.7 })
+              .circle(left + objectWidth - 10, centerY, 1.3)
+              .fill(0xfbbf24);
+            break;
+        }
+
+        if (object.interactive) {
+          graphic
+            .circle(left + objectWidth - 2, top + 2, 3)
+            .fill(0x22d3ee)
+            .stroke({ color: 0x0b1220, width: 1 });
+        }
         world.addChild(graphic);
-        const icon = makeText(MAP_OBJECT_ICON[object.type] || '📦', 14, '#ffffff');
-        icon.anchor.set(0.5);
-        icon.position.set(x + width / 2, y + height / 2);
-        world.addChild(icon);
       }
 
       const playerContainer = new PIXI.Container();
@@ -352,9 +574,32 @@ export function VirtualOfficeCanvas() {
       );
       playerContainer.addChild(
         new PIXI.Graphics()
-          .circle(0, 0, 13)
+          .roundRect(-7, 6, 14, 10, 3)
           .fill(hexToNumber(stateRef.current.avatarColor))
-          .stroke({ color: 0xffffff, width: 2, alpha: 0.9 })
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 })
+      );
+      playerContainer.addChild(
+        new PIXI.Graphics()
+          .roundRect(-10, -11, 20, 17, 4)
+          .fill(hexToNumber(stateRef.current.avatarColor))
+          .stroke({ color: 0xffffff, width: 2, alpha: 0.95 })
+      );
+      const playerBotFace = new PIXI.Graphics()
+        .circle(-4, -3, 1.8)
+        .fill(0x67e8f9)
+        .circle(4, -3, 1.8)
+        .fill(0x67e8f9)
+        .moveTo(-3, 2)
+        .lineTo(3, 2)
+        .stroke({ color: 0xe0f2fe, width: 1.2 });
+      playerContainer.addChild(playerBotFace);
+      playerContainer.addChild(
+        new PIXI.Graphics()
+          .moveTo(0, -11)
+          .lineTo(0, -16)
+          .stroke({ color: 0xe2e8f0, width: 1.5 })
+          .circle(0, -18, 2)
+          .fill(0x22d3ee)
       );
       const playerName = makeText(
         `${stateRef.current.displayName} (You)`,
@@ -363,7 +608,7 @@ export function VirtualOfficeCanvas() {
         true
       );
       playerName.anchor.set(0.5);
-      playerName.position.y = -24;
+      playerName.position.y = -31;
       playerContainer.addChild(playerName);
       const directionIndicator = new PIXI.Graphics().circle(0, 9, 3.5).fill(0xffffff);
       playerContainer.addChild(directionIndicator);
@@ -373,6 +618,9 @@ export function VirtualOfficeCanvas() {
         container: PIXI.Container;
         statusDot: PIXI.Graphics;
         statusLabel: PIXI.Text;
+        bubbleContainer: PIXI.Container;
+        bubbleText: PIXI.Text;
+        speechId: string | null;
         baseX: number;
         baseY: number;
         phase: number;
@@ -442,8 +690,7 @@ export function VirtualOfficeCanvas() {
         x: number,
         y: number,
         color: string,
-        label: string,
-        radius = 12
+        label: string
       ) => {
         const container = new PIXI.Container();
         container.position.set(x, y);
@@ -454,13 +701,37 @@ export function VirtualOfficeCanvas() {
         );
         container.addChild(
           new PIXI.Graphics()
-            .circle(0, 0, radius)
+            .roundRect(-7, 6, 14, 10, 3)
+            .fill(hexToNumber(color, 0x3b82f6))
+            .stroke({ color: 0xe2e8f0, width: 1.5, alpha: 0.9 })
+        );
+        container.addChild(
+          new PIXI.Graphics()
+            .roundRect(-10, -11, 20, 17, 4)
             .fill(hexToNumber(color, 0x3b82f6))
             .stroke({ color: 0xe2e8f0, width: 2, alpha: 0.9 })
         );
+        container.addChild(
+          new PIXI.Graphics()
+            .circle(-4, -3, 1.8)
+            .fill(0x67e8f9)
+            .circle(4, -3, 1.8)
+            .fill(0x67e8f9)
+            .moveTo(-3, 2)
+            .lineTo(3, 2)
+            .stroke({ color: 0xe0f2fe, width: 1.2 })
+        );
+        container.addChild(
+          new PIXI.Graphics()
+            .moveTo(0, -11)
+            .lineTo(0, -16)
+            .stroke({ color: 0xe2e8f0, width: 1.5 })
+            .circle(0, -18, 2)
+            .fill(0x22d3ee)
+        );
         const name = makeText(label, 11, '#f1f5f9', true);
         name.anchor.set(0.5);
-        name.position.y = -24;
+        name.position.y = -31;
         container.addChild(name);
         world.addChild(container);
         return container;
@@ -570,10 +841,9 @@ export function VirtualOfficeCanvas() {
               ai.x,
               ai.y,
               ai.avatarColor,
-              `🤖 ${ai.name}`,
-              12
+              ai.name
             );
-            const dot = new PIXI.Graphics().circle(11, -11, 5).fill(
+            const dot = new PIXI.Graphics().circle(9, -9, 4).fill(
               hexToNumber(AI_STATUS_COLOR[ai.status])
             );
             container.addChild(dot);
@@ -581,10 +851,32 @@ export function VirtualOfficeCanvas() {
             label.anchor.set(0.5);
             label.position.y = 20;
             container.addChild(label);
+            const bubbleContainer = new PIXI.Container();
+            bubbleContainer.position.set(0, -44);
+            bubbleContainer.visible = false;
+            bubbleContainer.addChild(
+              new PIXI.Graphics()
+                .roundRect(-84, -38, 168, 31, 7)
+                .fill({ color: 0x07111f, alpha: 0.97 })
+                .stroke({ color: 0x67e8f9, width: 1.2, alpha: 0.9 })
+                .moveTo(-6, -8)
+                .lineTo(0, 0)
+                .lineTo(6, -8)
+                .closePath()
+                .fill({ color: 0x07111f, alpha: 0.97 })
+            );
+            const bubbleText = makeText('', 9, '#f8fafc', true, 150);
+            bubbleText.anchor.set(0.5);
+            bubbleText.position.set(0, -23);
+            bubbleContainer.addChild(bubbleText);
+            container.addChild(bubbleContainer);
             entry = {
               container,
               statusDot: dot,
               statusLabel: label,
+              bubbleContainer,
+              bubbleText,
+              speechId: null,
               baseX: ai.x,
               baseY: ai.y,
               phase: Math.random() * Math.PI * 2,
@@ -598,6 +890,21 @@ export function VirtualOfficeCanvas() {
             hexToNumber(AI_STATUS_COLOR[ai.status])
           );
           entry.statusLabel.text = ai.status.replace('_', ' ');
+          const speech = currentState.aiSpeechBubbles[ai.id];
+          const now = Date.now();
+          if (speech && speech.expiresAt > now) {
+            if (entry.speechId !== speech.id) {
+              entry.speechId = speech.id;
+              entry.bubbleText.text = speech.text;
+            }
+            entry.bubbleContainer.visible = true;
+            entry.bubbleContainer.alpha = Math.min(
+              1,
+              (speech.expiresAt - now) / 600
+            );
+          } else {
+            entry.bubbleContainer.visible = false;
+          }
           const distance = Math.hypot(px - entry.container.x, py - entry.container.y);
           if (distance < minAiDist) {
             minAiDist = distance;
@@ -754,7 +1061,7 @@ export function VirtualOfficeCanvas() {
       const distance = Math.hypot(localPlayerPos.x - ai.x, localPlayerPos.y - ai.y);
       return {
         id: ai.id,
-        name: `🤖 ${ai.name}`,
+        name: ai.name,
         role: ai.role,
         volume: Math.round(Math.max(0, 1 - distance / MAX_PROXIMITY_DISTANCE) * 100),
       };
@@ -781,6 +1088,7 @@ export function VirtualOfficeCanvas() {
           players={players}
           localPlayerPos={localPlayerPos}
           currentUserId={currentUser?.uid || 'local_guest'}
+          speechBubbles={aiSpeechBubbles}
         />
       )}
 
@@ -908,7 +1216,7 @@ export function VirtualOfficeCanvas() {
           </span>
           <span className="text-xs font-medium text-slate-100">
             {nearbyAIEmployee
-              ? `Interact with 🤖 ${nearbyAIEmployee.name} (${nearbyAIEmployee.role})`
+              ? `Interact with ${nearbyAIEmployee.name} (${nearbyAIEmployee.role})`
               : `Interact with ${nearbyObject?.label}`}
           </span>
           <button
@@ -930,7 +1238,10 @@ export function VirtualOfficeCanvas() {
           <div className="flex items-start justify-between border-b border-slate-800 pb-3">
             <div>
               <div className="text-sm font-semibold text-white">
-                🤖 {nearbyAIEmployee.name}
+                <span className="inline-flex items-center gap-1">
+                  <Bot className="h-4 w-4" aria-hidden="true" />
+                  {nearbyAIEmployee.name}
+                </span>
               </div>
               <div className="text-xs text-slate-400">
                 {nearbyAIEmployee.role} · {nearbyAIEmployee.modelProvider} ·

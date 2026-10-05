@@ -35,8 +35,9 @@ export function AIWorkforceControlCenter() {
 
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState('');
-  const [newProvider, setNewProvider] = useState<AIModelProvider>('NVIDIA');
-  const [newModel, setNewModel] = useState('meta/llama-3.1-70b-instruct');
+  const [newProvider, setNewProvider] =
+    useState<AIModelProvider>('NINEROUTER');
+  const [newModel, setNewModel] = useState('openrouter/auto');
   const [newAutonomy, setNewAutonomy] = useState<AutonomyLevel>(2);
   const [newDailyBudget, setNewDailyBudget] = useState(15);
   const [newMonthlyBudget, setNewMonthlyBudget] = useState(60);
@@ -126,7 +127,10 @@ export function AIWorkforceControlCenter() {
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
             <span>AI Workforce Control Center</span>
             <span>·</span>
-            <span>Human Supervisor: 👨 {currentDept.supervisorName}</span>
+            <span className="inline-flex items-center gap-1">
+              <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+              Human Supervisor: {currentDept.supervisorName}
+            </span>
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
             {currentDept.name} Department — AI Workforce
@@ -236,7 +240,10 @@ export function AIWorkforceControlCenter() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-base font-semibold text-white">
-                      🤖 {ai.name} — {ai.role}
+                      <span className="inline-flex items-center gap-1">
+                        <Bot className="h-4 w-4" aria-hidden="true" />
+                        {ai.name} — {ai.role}
+                      </span>
                     </h3>
                     <div className="text-xs text-slate-400 mt-0.5 font-mono">
                       Provider: {ai.modelProvider} · Model: {ai.modelName} ·
@@ -302,7 +309,17 @@ export function AIWorkforceControlCenter() {
                             ? 'meta/llama-3.1-70b-instruct'
                             : prov === 'GEMINI'
                               ? 'gemini-3.8-flash'
-                              : 'gpt-4o';
+                              : prov === 'OPENROUTER'
+                                ? 'openrouter/auto'
+                                : prov === 'ANTHROPIC'
+                                  ? 'claude-3-7-sonnet-latest'
+                                  : prov === 'OPENCLAW'
+                                    ? 'openclaw'
+                                    : prov === 'NINEROUTER'
+                                      ? 'openrouter/auto'
+                                    : prov === 'OPENAI'
+                                      ? 'gpt-4o'
+                                      : ai.modelName;
                         updateAIEmployeeState(ai, {
                           modelProvider: prov,
                           modelName: defaultModel,
@@ -315,6 +332,8 @@ export function AIWorkforceControlCenter() {
                       <option value="OPENAI">OpenAI</option>
                       <option value="ANTHROPIC">Anthropic</option>
                       <option value="OPENROUTER">OpenRouter</option>
+                      <option value="OPENCLAW">OpenClaw</option>
+                      <option value="NINEROUTER">9Router Proxy</option>
                     </select>
                   </div>
 
@@ -488,6 +507,14 @@ export function AIWorkforceControlCenter() {
                     if (p === 'NVIDIA')
                       setNewModel('meta/llama-3.1-70b-instruct');
                     if (p === 'GEMINI') setNewModel('gemini-3.8-flash');
+                    if (p === 'OPENAI') setNewModel('gpt-4o');
+                    if (p === 'ANTHROPIC')
+                      setNewModel('claude-3-7-sonnet-latest');
+                    if (p === 'OPENROUTER')
+                      setNewModel('openrouter/auto');
+                    if (p === 'OPENCLAW') setNewModel('openclaw');
+                    if (p === 'NINEROUTER')
+                      setNewModel('openrouter/auto');
                   }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
                 >
@@ -496,6 +523,8 @@ export function AIWorkforceControlCenter() {
                   <option value="OPENAI">OpenAI</option>
                   <option value="ANTHROPIC">Anthropic</option>
                   <option value="OPENROUTER">OpenRouter</option>
+                  <option value="OPENCLAW">OpenClaw</option>
+                  <option value="NINEROUTER">9Router Proxy</option>
                 </select>
               </div>
               <div>

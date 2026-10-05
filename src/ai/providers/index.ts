@@ -11,6 +11,7 @@ export interface AIRequestPayload {
   departmentContext?: string;
   knowledgeContext?: string;
   restrictions?: string;
+  disableFallback?: boolean;
 }
 
 export interface AIResponsePayload {
@@ -206,7 +207,46 @@ async function callOpenAICompatibleProvider(
     choices?: { message?: { content?: string } }[];
   };
   const content = data.choices?.[0]?.message?.content || '';
+  if (!content.trim()) throw new Error('AI provider returned an empty response.');
   return { text: content, modelUsed: model };
+}
+
+async function callAnthropicProvider(
+  apiKey: string,
+  model: string,
+  systemInstruction: string,
+  userPrompt: string,
+  temperature: number
+): Promise<{ text: string; modelUsed: string }> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1024,
+      temperature,
+      system: systemInstruction,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Anthropic API error (${response.status}): ${await response.text()}`);
+  }
+
+  const data = (await response.json()) as {
+    content?: { type: string; text?: string }[];
+  };
+  const text = data.content
+    ?.filter((block) => block.type === 'text')
+    .map((block) => block.text || '')
+    .join('\n');
+  if (!text) throw new Error('Anthropic returned an empty response.');
+  return { text, modelUsed: model };
 }
 
 export async function generateAIEmployeeResponse(
@@ -252,24 +292,53 @@ export async function generateAIEmployeeResponse(
   const openrouterKey =
     serverIntegrations.apiKeys.openrouterApiKey ||
     process.env.OPENROUTER_API_KEY;
+  const anthropicKey =
+    serverIntegrations.apiKeys.anthropicApiKey ||
+    process.env.ANTHROPIC_API_KEY;
+  const openclawKey =
+    serverIntegrations.apiKeys.openclawApiKey || process.env.OPENCLAW_API_KEY;
+  const openclawBaseUrl = process.env.OPENCLAW_BASE_URL?.replace(/\/+$/, '');
+  const nineRouterKey =
+    serverIntegrations.apiKeys.nineRouterApiKey ||
+    process.env.NINEROUTER_API_KEY;
+  const nineRouterBaseUrl = (
+    serverIntegrations.aiSettings.nineRouterBaseUrl ||
+    process.env.NINEROUTER_BASE_URL ||
+    ''
+  ).replace(/\/+$/, '');
 
   let textOutput = '';
   let providerUsed: string = input.provider || 'NVIDIA';
   let modelUsed: string = input.modelName || 'meta/llama-3.1-70b-instruct';
 
   try {
-    if (nvidiaKey && (input.provider === 'NVIDIA' || !input.provider)) {
-      const res = await callNvidiaNIM(
-        nvidiaKey,
-        modelUsed,
-        composedSystemPrompt,
-        input.userPrompt,
-        input.temperature ?? 0.6
-      );
-      textOutput = res.text;
-      providerUsed = 'NVIDIA NIM';
-      modelUsed = res.modelUsed;
-    } else if (openaiKey && input.provider === 'OPENAI') {
+    if (input.provider === 'NVIDIA' || !input.provider) {
+      if (!nvidiaKey && input.provider === 'NVIDIA') {
+        throw new Error('NVIDIA_API_KEY is not configured.');
+      }
+      if (!nvidiaKey) {
+        const res = await callGeminiProvider(
+          composedSystemPrompt,
+          input.userPrompt,
+          input.temperature ?? 0.6
+        );
+        textOutput = res.text;
+        providerUsed = 'Google Gemini (NVIDIA fallback)';
+        modelUsed = res.modelUsed;
+      } else {
+        const res = await callNvidiaNIM(
+          nvidiaKey,
+          modelUsed,
+          composedSystemPrompt,
+          input.userPrompt,
+          input.temperature ?? 0.6
+        );
+        textOutput = res.text;
+        providerUsed = 'NVIDIA NIM';
+        modelUsed = res.modelUsed;
+      }
+    } else if (input.provider === 'OPENAI') {
+      if (!openaiKey) throw new Error('OPENAI_API_KEY is not configured.');
       const res = await callOpenAICompatibleProvider(
         'https://api.openai.com/v1',
         openaiKey,
@@ -281,17 +350,64 @@ export async function generateAIEmployeeResponse(
       textOutput = res.text;
       providerUsed = 'OpenAI';
       modelUsed = res.modelUsed;
-    } else if (openrouterKey && input.provider === 'OPENROUTER') {
+    } else if (input.provider === 'ANTHROPIC') {
+      if (!anthropicKey) throw new Error('ANTHROPIC_API_KEY is not configured.');
+      const res = await callAnthropicProvider(
+        anthropicKey,
+        input.modelName || 'claude-3-7-sonnet-latest',
+        composedSystemPrompt,
+        input.userPrompt,
+        input.temperature ?? 0.6
+      );
+      textOutput = res.text;
+      providerUsed = 'Anthropic';
+      modelUsed = res.modelUsed;
+    } else if (input.provider === 'OPENROUTER') {
+      if (!openrouterKey) throw new Error('OPENROUTER_API_KEY is not configured.');
       const res = await callOpenAICompatibleProvider(
         'https://openrouter.ai/api/v1',
         openrouterKey,
-        input.modelName || 'meta-llama/llama-3.1-70b-instruct',
+        input.modelName || 'openrouter/auto',
         composedSystemPrompt,
         input.userPrompt,
         input.temperature ?? 0.6
       );
       textOutput = res.text;
       providerUsed = 'OpenRouter';
+      modelUsed = res.modelUsed;
+    } else if (input.provider === 'OPENCLAW') {
+      if (!openclawBaseUrl || !openclawKey) {
+        throw new Error(
+          'OpenClaw is not configured. Set OPENCLAW_BASE_URL and OPENCLAW_API_KEY on the server.'
+        );
+      }
+      const res = await callOpenAICompatibleProvider(
+        openclawBaseUrl,
+        openclawKey,
+        input.modelName || 'openclaw',
+        composedSystemPrompt,
+        input.userPrompt,
+        input.temperature ?? 0.6
+      );
+      textOutput = res.text;
+      providerUsed = 'OpenClaw Gateway';
+      modelUsed = res.modelUsed;
+    } else if (input.provider === 'NINEROUTER') {
+      if (!nineRouterBaseUrl || !nineRouterKey) {
+        throw new Error(
+          '9Router Proxy is not configured. Set its Base URL and server-side API key in Settings.'
+        );
+      }
+      const res = await callOpenAICompatibleProvider(
+        nineRouterBaseUrl,
+        nineRouterKey,
+        input.modelName || 'openrouter/auto',
+        composedSystemPrompt,
+        input.userPrompt,
+        input.temperature ?? 0.6
+      );
+      textOutput = res.text;
+      providerUsed = '9Router Proxy';
       modelUsed = res.modelUsed;
     } else {
       const res = await callGeminiProvider(
@@ -300,12 +416,22 @@ export async function generateAIEmployeeResponse(
         input.temperature ?? 0.6
       );
       textOutput = res.text;
-      providerUsed =
-        input.provider === 'NVIDIA' ? 'NVIDIA / Gemini Hybrid' : 'Google Gemini';
+      providerUsed = 'Google Gemini';
       modelUsed = res.modelUsed;
     }
   } catch (err) {
-    // Fallback to Gemini if primary provider fails
+    if (
+      input.disableFallback ||
+      !serverIntegrations.aiSettings.autoFallbackToGemini
+    ) {
+      throw err;
+    }
+    const geminiKey =
+      serverIntegrations.apiKeys.geminiApiKey ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_AI_API_KEY;
+    if (!geminiKey) throw err;
+
     try {
       const res = await callGeminiProvider(
         composedSystemPrompt,
@@ -316,28 +442,16 @@ export async function generateAIEmployeeResponse(
       textOutput = res.text;
       providerUsed = 'Google Gemini (Fallback)';
       modelUsed = res.modelUsed;
-    } catch {
-      // Graceful local autonomous synthesis when external API keys are not yet entered or quota is reached
-      const primaryErrMsg =
-        err instanceof Error ? err.message.slice(0, 140) : 'API key not set';
-      providerUsed = `${input.provider || 'NVIDIA'} (Local Autonomous Engine)`;
-      modelUsed = input.modelName || 'meta/llama-3.1-70b-instruct';
-      textOutput = [
-        `✅ **[Autonomous Analysis Completed — ${providerUsed}]**`,
-        ``,
-        `**Ringkasan Eksekusi & Rekomendasi:**`,
-        `- Permintaan berhasil dianalisis sesuai SOP departemen dan kebijakan *Human-in-the-Loop Governance*.`,
-        `- Prompt konteks: *"${input.userPrompt.slice(0, 160)}"*`,
-        `- Status Keamanan: Risiko **${riskCheck.riskLevel}** (${
-          riskCheck.requiresApproval
-            ? 'Menunggu Persetujuan Human Supervisor'
-            : 'Aman untuk Eksekusi Internal'
-        }).`,
-        ``,
-        `*(Catatan Sistem: Untuk terhubung langsung ke cloud endpoint eksternal ${
-          input.provider || 'NVIDIA NIM'
-        }, pastikan API Key aktif telah dimasukkan pada menu **Settings & Integrations > Form Input API Key**. Detail diagnostik: ${primaryErrMsg})*`,
-      ].join('\n');
+    } catch (fallbackError) {
+      throw new Error(
+        `Primary AI provider failed: ${
+          err instanceof Error ? err.message : 'Unknown provider error'
+        }. Gemini fallback failed: ${
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : 'Unknown fallback error'
+        }`
+      );
     }
   }
 

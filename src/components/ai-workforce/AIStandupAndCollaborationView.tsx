@@ -5,6 +5,7 @@ import { useAppStore } from '@/src/store/useAppStore';
 import { recordAIActivityLog } from '@/src/lib/firestore-actions';
 import { soundFX } from '@/src/lib/sound';
 import {
+  Bot,
   Users,
   Sparkles,
   ArrowRightLeft,
@@ -96,9 +97,9 @@ Format strictly with:
       const fin = aiEmployees.find((a) => a.id === 'ai_fin') || aiEmployees[2];
 
       const prompt = `Simulate an authorized cross-department AI-to-AI workflow between:
-1. 🤖 ${sarah?.name} (Marketing Strategist)
-2. 🤖 ${maya?.name} (Market & Revenue Intelligence)
-3. 🤖 ${fin?.name} (FP&A & Cost Governance)
+1. ${sarah?.name} (Marketing Strategist)
+2. ${maya?.name} (Market & Revenue Intelligence)
+3. ${fin?.name} (FP&A & Cost Governance)
 
 Topic: Joint Q4 Enterprise Expansion Campaign & ROI Budget Verification.
 Provide each agent's structured contribution and end with a joint recommendation queued for Human Supervisor Approval.`;
@@ -151,7 +152,10 @@ Provide each agent's structured contribution and end with a joint recommendation
             {currentDept?.name} Daily Standup & AI Collaboration
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Chaired by Human Supervisor 👨 {currentDept?.supervisorName}
+            <span className="inline-flex items-center gap-1">
+              <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+              Chaired by Human Supervisor {currentDept?.supervisorName}
+            </span>
           </p>
         </div>
 
@@ -183,7 +187,7 @@ Provide each agent's structured contribution and end with a joint recommendation
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-white">
-                    🤖 {ai.name} — {ai.role}
+                    {ai.name} — {ai.role}
                   </h3>
                   <div className="text-xs text-slate-400 font-mono">
                     {ai.modelProvider} · {ai.modelName} · KPI{' '}

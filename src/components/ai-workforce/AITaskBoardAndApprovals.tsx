@@ -7,10 +7,12 @@ import {
   updateAITaskStatusAndOutput,
   updateAIEmployeeState,
   recordAIActivityLog,
+  sendRealtimeChatMessage,
 } from '@/src/lib/firestore-actions';
 import { soundFX } from '@/src/lib/sound';
 import { AITask, RiskLevel } from '@/src/types';
 import {
+  Bot,
   Play,
   CheckCircle2,
   XCircle,
@@ -29,6 +31,7 @@ export function AITaskBoardAndApprovals({
   const aiEmployees = useAppStore((s) => s.aiEmployees);
   const knowledgeDocs = useAppStore((s) => s.knowledgeDocs);
   const workspace = useAppStore((s) => s.workspace);
+  const currentUser = useAppStore((s) => s.currentUser);
 
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [selectedTaskForModal, setSelectedTaskForModal] =
@@ -48,21 +51,44 @@ export function AITaskBoardAndApprovals({
       aiEmployees.find((a) => a.id === taskAiId) || aiEmployees[0];
     if (!targetAI || !taskTitle.trim()) return;
 
-    await createNewAITask({
+    const description = taskDesc.trim() || taskTitle.trim();
+    const estimatedCost =
+      taskPriority === 'CRITICAL' ? 35 : taskPriority === 'HIGH' ? 18 : 4.5;
+    const taskId = await createNewAITask({
       departmentId: targetAI.departmentId,
       aiEmployee: targetAI,
       title: taskTitle.trim(),
-      description: taskDesc.trim() || taskTitle.trim(),
+      description,
       priority: taskPriority,
       deadline: taskDeadline.trim(),
       requiresApproval: taskRequiresApproval,
-      estimatedCost: taskPriority === 'CRITICAL' ? 35 : taskPriority === 'HIGH' ? 18 : 4.5,
+      estimatedCost,
     });
+    if (!taskId) return;
+
+    const task: AITask = {
+      id: taskId,
+      workspaceId: targetAI.workspaceId,
+      departmentId: targetAI.departmentId,
+      aiEmployeeId: targetAI.id,
+      aiEmployeeName: targetAI.name,
+      creatorId: currentUser?.uid || 'local_guest',
+      title: taskTitle.trim(),
+      description,
+      priority: taskPriority,
+      status: 'TODO',
+      riskLevel: taskPriority,
+      requiresApproval: taskRequiresApproval,
+      estimatedCost,
+      outputReport: 'Queued for AI execution.',
+      deadline: taskDeadline.trim() || 'This Week',
+    };
 
     setTaskTitle('');
     setTaskDesc('');
     setShowNewTaskModal(false);
     soundFX.playNotification();
+    void handleRunAIOnTask(task);
   };
 
   const handleRunAIOnTask = async (task: AITask) => {
@@ -85,28 +111,133 @@ export function AITaskBoardAndApprovals({
         .map((d) => `${d.title}: ${d.content}`)
         .join('\n\n');
 
-      const res = await fetch('/api/ai/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: task.id,
-          title: task.title,
-          description: task.description,
-          aiEmployeeName: targetAI.name,
-          aiRole: targetAI.role,
-          provider: targetAI.modelProvider,
-          modelName: targetAI.modelName,
-          systemPrompt: targetAI.systemPrompt,
-          restrictions: targetAI.restrictions,
-          knowledgeContext: deptDocs,
-          autonomyLevel: targetAI.autonomyLevel,
-        }),
-      });
+      const requestTask = async (
+        employee: (typeof aiEmployees)[number],
+        description: string,
+        knowledgeContext: string
+      ) => {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const response = await fetch('/api/ai/tasks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                taskId: task.id,
+                title: task.title,
+                description,
+                aiEmployeeName: employee.name,
+                aiRole: employee.role,
+                provider: employee.modelProvider,
+                modelName: employee.modelName,
+                systemPrompt: employee.systemPrompt,
+                restrictions: employee.restrictions,
+                knowledgeContext: knowledgeContext.slice(0, 8000),
+                autonomyLevel: employee.autonomyLevel,
+              }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              if (attempt === 0 && (response.status === 429 || response.status >= 500)) {
+                await new Promise((resolve) => setTimeout(resolve, 700));
+                continue;
+              }
+              throw new Error(result.error || 'Failed to execute AI task');
+            }
+            if (
+              typeof result.outputReport !== 'string' ||
+              !result.outputReport.trim()
+            ) {
+              throw new Error('AI provider returned an empty task result');
+            }
+            return result as {
+              outputReport: string;
+              providerUsed: string;
+              modelUsed: string;
+              estimatedCostUsd: number;
+              requiresApproval: boolean;
+            };
+          } catch (error) {
+            if (attempt === 0 && error instanceof TypeError) {
+              await new Promise((resolve) => setTimeout(resolve, 700));
+              continue;
+            }
+            throw error;
+          }
+        }
+        throw new Error('AI task retry limit reached');
+      };
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to execute AI task');
+      const collaborators = aiEmployees
+        .filter(
+          (employee) =>
+            employee.id !== targetAI.id &&
+            employee.departmentId === task.departmentId &&
+            employee.roomId === targetAI.roomId &&
+            employee.status === 'WORKING' &&
+            employee.spentToday < employee.dailyBudget &&
+            employee.spentMonth < employee.monthlyBudget
+        )
+        .slice(0, 2);
+      const peerInsights: string[] = [];
+      let peerCostUsd = 0;
+
+      for (const collaborator of collaborators) {
+        await sendRealtimeChatMessage({
+          channelType: 'ROOM',
+          roomId: targetAI.roomId,
+          senderId: targetAI.id,
+          senderName: targetAI.name,
+          senderType: 'AI',
+          content: `Team, I’m leading “${task.title}”. ${collaborator.name}, could you review it from your ${collaborator.role} perspective?`,
+        });
+        await updateAIEmployeeState(collaborator, { status: 'PROCESSING' });
+
+        try {
+          const peerResult = await requestTask(
+            collaborator,
+            `Review this task as a teammate. Provide concise evidence-based advice, risks, and one practical recommendation. Do not claim to execute actions.\n\n${task.description}`,
+            deptDocs
+          );
+          peerInsights.push(`${collaborator.name} (${collaborator.role}): ${peerResult.outputReport}`);
+          peerCostUsd += peerResult.estimatedCostUsd || 0;
+          await updateAIEmployeeState(collaborator, {
+            status: 'WORKING',
+            spentToday:
+              collaborator.spentToday + (peerResult.estimatedCostUsd || 0),
+            spentMonth:
+              collaborator.spentMonth + (peerResult.estimatedCostUsd || 0),
+          });
+          await sendRealtimeChatMessage({
+            channelType: 'ROOM',
+            roomId: targetAI.roomId,
+            senderId: collaborator.id,
+            senderName: collaborator.name,
+            senderType: 'AI',
+            content: peerResult.outputReport.slice(0, 1800),
+          });
+        } catch (error) {
+          await updateAIEmployeeState(collaborator, { status: 'ERROR' });
+          await sendRealtimeChatMessage({
+            channelType: 'ROOM',
+            roomId: targetAI.roomId,
+            senderId: collaborator.id,
+            senderName: collaborator.name,
+            senderType: 'AI',
+            content: `I couldn’t contribute to “${task.title}”: ${
+              error instanceof Error ? error.message : 'AI request failed'
+            }`,
+          });
+        }
       }
+
+      const teamContext = peerInsights.length
+        ? `\n\nTEAM INPUTS FROM ${targetAI.departmentId}:\n${peerInsights.join('\n\n')}`
+        : '';
+      const data = await requestTask(
+        targetAI,
+        task.description,
+        `${deptDocs}${teamContext}`
+      );
 
       const nextStatus: AITask['status'] =
         task.requiresApproval || data.requiresApproval ? 'REVIEW' : 'COMPLETED';
@@ -120,8 +251,8 @@ export function AITaskBoardAndApprovals({
 
       await updateAIEmployeeState(targetAI, {
         status: nextStatus === 'REVIEW' ? 'WAITING_APPROVAL' : 'WORKING',
-        spentToday: targetAI.spentToday + (data.estimatedCostUsd || 0.02),
-        spentMonth: targetAI.spentMonth + (data.estimatedCostUsd || 0.02),
+        spentToday: targetAI.spentToday + (data.estimatedCostUsd || 0),
+        spentMonth: targetAI.spentMonth + (data.estimatedCostUsd || 0),
         tasksCompleted:
           nextStatus === 'COMPLETED'
             ? targetAI.tasksCompleted + 1
@@ -136,10 +267,18 @@ export function AITaskBoardAndApprovals({
           nextStatus === 'REVIEW'
             ? `Task Executed & Queued for Approval: ${task.title.slice(0, 60)}`
             : `Task Completed Autonomously: ${task.title.slice(0, 60)}`,
-        details: `Provider: ${data.providerUsed} (${data.modelUsed})`,
+        details: `Provider: ${data.providerUsed} (${data.modelUsed}). Team contributors: ${peerInsights.length}.`,
         status: nextStatus === 'REVIEW' ? 'PENDING_APPROVAL' : 'SUCCESS',
         riskLevel: task.riskLevel,
-        costIncurred: data.estimatedCostUsd || 0.02,
+        costIncurred: (data.estimatedCostUsd || 0) + peerCostUsd,
+      });
+      await sendRealtimeChatMessage({
+        channelType: 'ROOM',
+        roomId: targetAI.roomId,
+        senderId: targetAI.id,
+        senderName: targetAI.name,
+        senderType: 'AI',
+        content: data.outputReport.slice(0, 1800),
       });
 
       soundFX.playNotification();
@@ -150,6 +289,7 @@ export function AITaskBoardAndApprovals({
         outputReport:
           err instanceof Error ? `Execution Error: ${err.message}` : 'Error',
       });
+      await updateAIEmployeeState(targetAI, { status: 'ERROR' });
     } finally {
       setExecutingTaskId(null);
     }
@@ -231,7 +371,8 @@ export function AITaskBoardAndApprovals({
                     <div className="flex items-center gap-2 text-xs text-amber-300 font-mono">
                       <AlertTriangle className="w-4 h-4 text-amber-400" />
                       <span>
-                        🤖 {task.aiEmployeeName} requests approval · Risk:{' '}
+                        <Bot className="inline h-3.5 w-3.5" aria-hidden="true" />{' '}
+                        {task.aiEmployeeName} requests approval · Risk:{' '}
                         {task.riskLevel} · Est. Cost: $
                         {task.estimatedCost.toFixed(2)}
                       </span>
@@ -322,7 +463,10 @@ export function AITaskBoardAndApprovals({
                   >
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                        <span>🤖 {task.aiEmployeeName}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                          {task.aiEmployeeName}
+                        </span>
                         <span>Risk: {task.riskLevel}</span>
                       </div>
                       <h4 className="text-xs font-semibold text-white leading-snug">
@@ -415,7 +559,7 @@ export function AITaskBoardAndApprovals({
             <div className="flex items-start justify-between border-b border-slate-800 pb-3">
               <div>
                 <div className="text-xs text-emerald-400 font-mono">
-                  🤖 {selectedTaskForModal.aiEmployeeName} · Status:{' '}
+                  {selectedTaskForModal.aiEmployeeName} · Status:{' '}
                   {selectedTaskForModal.status}
                 </div>
                 <h3 className="text-base font-semibold text-white mt-0.5">
@@ -458,7 +602,7 @@ export function AITaskBoardAndApprovals({
               >
                 {aiEmployees.map((ai) => (
                   <option key={ai.id} value={ai.id}>
-                    🤖 {ai.name} — {ai.role} ({ai.modelProvider})
+                    {ai.name} — {ai.role} ({ai.modelProvider})
                   </option>
                 ))}
               </select>

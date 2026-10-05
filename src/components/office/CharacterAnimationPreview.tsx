@@ -27,15 +27,15 @@ export function CharacterAnimationPreview() {
             <RiveAvatar src={riveSource} />
           ) : (
             <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-slate-700">
-              Rive asset needed
+              Robot Rive asset needed
             </div>
           )}
           <label className="block">
-            Rive .riv URL
+            Robot Rive .riv URL
             <input
               value={riveSource}
               onChange={(event) => setRiveSource(event.target.value)}
-              placeholder="/avatars/agent.riv"
+              placeholder="/avatars/robot-agent.riv"
               className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200"
             />
           </label>

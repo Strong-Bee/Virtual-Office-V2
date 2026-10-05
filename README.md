@@ -55,9 +55,11 @@ The platform is designed around one core principle:
 ### 🗺️ Interactive 2D Virtual Office
 
 - Top-down multiplayer office environment
-- Phaser-powered 2D spatial engine
+- PixiJS-powered 2D spatial engine
 - Human player avatars
 - AI employee avatars
+- Per-department office rooms with room-only team coordination
+- AI chat bubbles above speaking characters in 2D and 3D
 - Room zones and department areas
 - Furniture and collision handling
 - Interactive office objects
@@ -84,7 +86,7 @@ The platform is designed around one core principle:
 - Remote avatar interpolation
 - Movement updates throttled to approximately 250ms while moving
 
-### 🤖 AI Workforce
+### AI Workforce
 
 Each AI employee has its own:
 
@@ -104,6 +106,12 @@ Each AI employee has its own:
 - Realtime office position
 - Operational status
 
+New tasks start automatically when assigned. The lead agent can consult up to
+two active teammates in the same department room; their messages and the
+result are shown in that room's chat. Failed provider requests remain visible
+and retryable instead of being reported as successful. Agents can recover task
+runtime state, but never modify or deploy application source code.
+
 ### AI provider model
 
 | Provider | Configuration | Current role |
@@ -112,9 +120,20 @@ Each AI employee has its own:
 | Google Gemini | <code>GEMINI_API_KEY</code> / <code>GOOGLE_AI_API_KEY</code> | Primary/fallback |
 | OpenAI | <code>OPENAI_API_KEY</code> | OpenAI-compatible adapter |
 | OpenRouter | <code>OPENROUTER_API_KEY</code> | OpenAI-compatible adapter |
+| 9Router Proxy | <code>NINEROUTER_BASE_URL</code> + <code>NINEROUTER_API_KEY</code> | OpenAI-compatible local or tunnel proxy |
+| OpenClaw | <code>OPENCLAW_BASE_URL</code> + <code>OPENCLAW_API_KEY</code> | OpenAI-compatible gateway; run OpenClaw separately |
 | Anthropic | <code>ANTHROPIC_API_KEY</code> | Configuration/key-vault ready |
 
 The provider abstraction is centered in <code>src/ai/providers/index.ts</code>.
+Use the OpenClaw gateway URL reachable from the app container (for example,
+<code>http://openclaw:18789/v1</code> on a shared Docker network); keep its
+token in server-side environment secrets.
+For 9Router Proxy, use <code>http://localhost:20128/v1</code> when running
+Next.js directly on the same machine. Docker Desktop uses
+<code>http://host.docker.internal:20128/v1</code> by default; set
+<code>NINEROUTER_DOCKER_BASE_URL</code> to the HTTPS tunnel URL if the proxy
+cannot be reached through the host bridge. Keep its token in
+<code>NINEROUTER_API_KEY</code>, never in browser code.
 
 > **Implementation note:** NVIDIA NIM, Gemini, OpenAI-compatible APIs, and OpenRouter have direct inference paths in the current provider layer. Anthropic credentials are already represented in the settings/key vault, while a dedicated Anthropic inference adapter can be added without changing the AI employee data model.
 

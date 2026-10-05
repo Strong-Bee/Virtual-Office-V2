@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
     ],
   },
   serverExternalPackages: ['@whiskeysockets/baileys'],
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   output: 'standalone',
   transpilePackages: ['motion'],
   webpack: (config, {dev}) => {

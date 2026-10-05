@@ -9,7 +9,15 @@ const TaskExecuteSchema = z.object({
   aiEmployeeName: z.string().min(1).max(100),
   aiRole: z.string().min(1).max(120),
   provider: z
-    .enum(['NVIDIA', 'GEMINI', 'OPENAI', 'ANTHROPIC', 'OPENROUTER'])
+    .enum([
+      'NVIDIA',
+      'GEMINI',
+      'OPENAI',
+      'ANTHROPIC',
+      'OPENROUTER',
+      'OPENCLAW',
+      'NINEROUTER',
+    ])
     .optional(),
   modelName: z.string().max(120).optional(),
   systemPrompt: z.string().max(2000),

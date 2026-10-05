@@ -115,7 +115,7 @@ export function RightCollaborationSidebar({
         channelType: 'AI_DIRECT',
         roomId: activeAI.id,
         senderId: activeAI.id,
-        senderName: `🤖 ${activeAI.name} (${data.providerUsed})`,
+        senderName: `${activeAI.name} (${data.providerUsed})`,
         senderType: 'AI',
         content: data.text,
       });
@@ -153,12 +153,12 @@ export function RightCollaborationSidebar({
         channelType: 'AI_DIRECT',
         roomId: activeAI.id,
         senderId: activeAI.id,
-        senderName: `🤖 ${activeAI.name}`,
+        senderName: activeAI.name,
         senderType: 'AI',
         content:
           err instanceof Error
             ? `⚠️ ${err.message}`
-            : '🤖 AI temporarily unavailable. The task has been paused.',
+            : 'AI temporarily unavailable. The task has been paused.',
       });
       await updateAIEmployeeState(activeAI, { status: 'ERROR' });
     } finally {
@@ -234,7 +234,12 @@ export function RightCollaborationSidebar({
               {humanPlayersList.length === 0 && currentUser && (
                 <div className="flex items-center justify-between py-1.5 text-xs">
                   <div className="flex items-center gap-2.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
+                      style={{ backgroundColor: currentUser.avatarColor }}
+                    >
+                      <Bot className="w-4 h-4" aria-hidden="true" />
+                    </span>
                     <div>
                       <div className="font-medium text-slate-100">
                         {currentUser.displayName} (You)
@@ -256,16 +261,20 @@ export function RightCollaborationSidebar({
                 >
                   <div className="flex items-center gap-2.5">
                     <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{
-                        backgroundColor:
+                      className="relative w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-white"
+                      style={{ backgroundColor: p.avatarColor }}
+                    >
+                      <Bot className="w-4 h-4" aria-hidden="true" />
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-slate-900 ${
                           p.status === 'AVAILABLE'
-                            ? '#10b981'
+                            ? 'bg-emerald-500'
                             : p.status === 'AWAY'
-                              ? '#f59e0b'
-                              : '#ef4444',
-                      }}
-                    />
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                        }`}
+                      />
+                    </span>
                     <div>
                       <div className="font-medium text-slate-100">
                         {p.displayName}{' '}
@@ -305,7 +314,10 @@ export function RightCollaborationSidebar({
                 >
                   <div className="flex items-center justify-between">
                     <div className="font-medium text-xs text-slate-100">
-                      🤖 {ai.name}
+                      <span className="inline-flex items-center gap-1">
+                        <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                        {ai.name}
+                      </span>
                     </div>
                     <span className="text-[11px] font-mono text-emerald-400 tabular-nums">
                       {ai.status}
@@ -410,7 +422,7 @@ export function RightCollaborationSidebar({
             >
               {aiEmployees.map((ai) => (
                 <option key={ai.id} value={ai.id}>
-                  🤖 {ai.name} — {ai.role} ({ai.modelProvider})
+                  {ai.name} — {ai.role} ({ai.modelProvider})
                 </option>
               ))}
             </select>
@@ -425,7 +437,7 @@ export function RightCollaborationSidebar({
               <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2">
                 <div className="font-semibold text-slate-200 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                  Consult 🤖 {activeAI.name}
+                  Consult {activeAI.name}
                 </div>
                 <p>
                   Ask {activeAI.name} to analyze department KPIs, draft reports,
@@ -456,7 +468,7 @@ export function RightCollaborationSidebar({
             )}
             {aiLoading && (
               <div className="text-xs text-emerald-400 font-mono animate-pulse px-2">
-                🤖 {activeAI.name} is thinking via {activeAI.modelProvider}...
+                {activeAI.name} is thinking via {activeAI.modelProvider}...
               </div>
             )}
           </div>

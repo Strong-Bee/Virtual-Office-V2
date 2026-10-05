@@ -82,7 +82,7 @@ export function WorkspaceDashboardOverview() {
                 Supervisor Approval
               </div>
               <div className="text-xs text-amber-200/80">
-                Latest: &ldquo;{pendingApprovals[0].title}&rdquo; by 🤖{' '}
+                Latest: &ldquo;{pendingApprovals[0].title}&rdquo; by{' '}
                 {pendingApprovals[0].aiEmployeeName}
               </div>
             </div>
@@ -129,7 +129,10 @@ export function WorkspaceDashboardOverview() {
                         {dept.name}
                       </h3>
                       <div className="text-xs text-slate-400 mt-0.5">
-                        Supervisor: 👨 {dept.supervisorName}
+                        <span className="inline-flex items-center gap-1">
+                          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                          Supervisor: {dept.supervisorName}
+                        </span>
                       </div>
                     </div>
                     <span className="text-xs font-mono tabular-nums text-emerald-400">
@@ -149,7 +152,10 @@ export function WorkspaceDashboardOverview() {
                       >
                         <div>
                           <div className="font-semibold text-slate-100">
-                            🤖 {ai.name}
+                            <span className="inline-flex items-center gap-1">
+                              <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                              {ai.name}
+                            </span>
                           </div>
                           <div className="text-[11px] text-slate-400">
                             {ai.role} · {ai.modelProvider}
@@ -204,7 +210,7 @@ export function WorkspaceDashboardOverview() {
             >
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-white">
-                  🤖 {log.aiEmployeeName}
+                  {log.aiEmployeeName}
                 </span>
                 <span className="text-slate-400">·</span>
                 <span className="text-slate-200">{log.action}</span>
