@@ -18,7 +18,9 @@ NexusOS is a 2D Multiplayer Virtual Office and Enterprise AI Workforce Platform 
    🤖 Alex         🤖 Nova          🤖 Maya
 ```
 
-- **Frontend & Spatial Engine**: Next.js 15 (App Router), React 19, TypeScript (Strict), Tailwind CSS, Zustand, Phaser.js 2D Arcade Physics Engine.
+- **Frontend & Spatial Engine**: Next.js 15 (App Router), React 19, TypeScript (Strict), Tailwind CSS, Zustand, PixiJS 2D renderer, and a React Three Fiber / Three.js 3D view with Drei controls.
+- **Animation**: GSAP for canvas motion, Motion for React UI, and Rive for optional `.riv` character assets.
+- **Character runtime status**: Spine runtime is omitted until a valid Spine runtime license is provided; Live2D Cubism requires the separately supplied licensed SDK and model assets.
 - **Realtime & Persistence**: Firebase Firestore (`onSnapshot` delta streams with 250ms movement throttling and linear interpolation), Firebase Authentication (`signInWithPopup`).
 - **Multi-Provider AI Abstraction**:
   - **NVIDIA NIM API** (`NVIDIA_API_KEY` via `https://integrate.api.nvidia.com/v1/chat/completions`, default `meta/llama-3.1-70b-instruct`)
