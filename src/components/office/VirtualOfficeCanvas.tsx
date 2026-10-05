@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import * as PIXI from 'pixi.js';
 import gsap from 'gsap';
 import { motion } from 'motion/react';
@@ -22,8 +23,21 @@ import {
   Volume2,
   ZoomIn,
 } from 'lucide-react';
-import { CharacterAnimationPreview } from '@/src/components/office/CharacterAnimationPreview';
-import { VirtualOffice3DView } from '@/src/components/office/VirtualOffice3DView';
+
+const CharacterAnimationPreview = dynamic(
+  () =>
+    import('@/src/components/office/CharacterAnimationPreview').then(
+      (module) => module.CharacterAnimationPreview
+    ),
+  { ssr: false }
+);
+const VirtualOffice3DView = dynamic(
+  () =>
+    import('@/src/components/office/VirtualOffice3DView').then(
+      (module) => module.VirtualOffice3DView
+    ),
+  { ssr: false }
+);
 
 const AI_STATUS_COLOR: Record<AIEmployee['status'], string> = {
   WORKING: '#10b981',

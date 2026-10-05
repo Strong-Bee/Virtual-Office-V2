@@ -2,6 +2,7 @@ node_modules/
 .next/
 .baileys-auth/
 coverage/
+tsconfig.tsbuildinfo
 .DS_Store
 *.log
 .env*
