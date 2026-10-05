@@ -1,0 +1,849 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Public profile for a human user in the virtual office.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "avatarColor": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "role": {
+          "type": "string",
+          "enum": ["OWNER", "ADMIN", "DEPARTMENT_SUPERVISOR", "MEMBER", "GUEST"],
+          "maxLength": 32
+        },
+        "departmentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "avatarColor", "role", "createdAt", "updatedAt"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private PII data for a human user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Multi-tenant company workspace.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "slug": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "emergencyPauseAllAI": {
+          "type": "boolean"
+        },
+        "monthlyBudgetLimit": {
+          "type": "number"
+        },
+        "requireApprovalExternalComm": {
+          "type": "boolean"
+        },
+        "requireApprovalFinancial": {
+          "type": "boolean"
+        },
+        "requireApprovalDestructive": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "ownerId",
+        "emergencyPauseAllAI",
+        "monthlyBudgetLimit",
+        "requireApprovalExternalComm",
+        "requireApprovalFinancial",
+        "requireApprovalDestructive",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Company department with human supervisor and AI workforce.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "supervisorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "supervisorName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "goals": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "monthlyBudget": {
+          "type": "number"
+        },
+        "spentBudget": {
+          "type": "number"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "name",
+        "supervisorId",
+        "supervisorName",
+        "goals",
+        "monthlyBudget",
+        "spentBudget",
+        "paused",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AIEmployee": {
+      "title": "AIEmployee",
+      "description": "Autonomous AI employee assigned to a department and human supervisor.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "departmentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "supervisorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "avatarColor": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "personality": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "systemPrompt": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "restrictions": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "modelProvider": {
+          "type": "string",
+          "enum": ["NVIDIA", "GEMINI", "OPENAI", "ANTHROPIC", "OPENROUTER"],
+          "maxLength": 32
+        },
+        "modelName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "temperature": {
+          "type": "number"
+        },
+        "autonomyLevel": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["WORKING", "THINKING", "IN_MEETING", "PROCESSING", "WAITING_APPROVAL", "PAUSED", "ERROR"],
+          "maxLength": 32
+        },
+        "dailyBudget": {
+          "type": "number"
+        },
+        "monthlyBudget": {
+          "type": "number"
+        },
+        "spentToday": {
+          "type": "number"
+        },
+        "spentMonth": {
+          "type": "number"
+        },
+        "performanceScore": {
+          "type": "number"
+        },
+        "tasksCompleted": {
+          "type": "integer"
+        },
+        "tasksPending": {
+          "type": "integer"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "roomId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "departmentId",
+        "supervisorId",
+        "name",
+        "role",
+        "avatarColor",
+        "personality",
+        "systemPrompt",
+        "restrictions",
+        "modelProvider",
+        "modelName",
+        "temperature",
+        "autonomyLevel",
+        "status",
+        "dailyBudget",
+        "monthlyBudget",
+        "spentToday",
+        "spentMonth",
+        "performanceScore",
+        "tasksCompleted",
+        "tasksPending",
+        "x",
+        "y",
+        "roomId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AITask": {
+      "title": "AITask",
+      "description": "Task assigned to an AI employee with Kanban status and approval workflow.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "departmentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "aiEmployeeId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "aiEmployeeName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "creatorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "maxLength": 32
+        },
+        "status": {
+          "type": "string",
+          "enum": ["TODO", "WORKING", "REVIEW", "COMPLETED", "REJECTED"],
+          "maxLength": 32
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "maxLength": 32
+        },
+        "requiresApproval": {
+          "type": "boolean"
+        },
+        "estimatedCost": {
+          "type": "number"
+        },
+        "outputReport": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "deadline": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "departmentId",
+        "aiEmployeeId",
+        "aiEmployeeName",
+        "creatorId",
+        "title",
+        "description",
+        "priority",
+        "status",
+        "riskLevel",
+        "requiresApproval",
+        "estimatedCost",
+        "outputReport",
+        "deadline",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AIActivityLog": {
+      "title": "AIActivityLog",
+      "description": "Immutable audit log of AI actions, tool calls, and human supervisor approvals.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "departmentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "aiEmployeeId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "aiEmployeeName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "actorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "action": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 1500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["SUCCESS", "PENDING_APPROVAL", "APPROVED", "REJECTED", "PAUSED", "ERROR"],
+          "maxLength": 32
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "maxLength": 32
+        },
+        "costIncurred": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "departmentId",
+        "aiEmployeeId",
+        "aiEmployeeName",
+        "actorId",
+        "action",
+        "details",
+        "status",
+        "riskLevel",
+        "costIncurred",
+        "createdAt"
+      ]
+    },
+    "PlayerPresence": {
+      "title": "PlayerPresence",
+      "description": "Realtime 2D avatar position and presence status in the virtual office.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "officeId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "roomId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "avatarColor": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["UP", "DOWN", "LEFT", "RIGHT"],
+          "maxLength": 16
+        },
+        "status": {
+          "type": "string",
+          "enum": ["AVAILABLE", "AWAY", "BUSY", "OFFLINE", "DND"],
+          "maxLength": 32
+        },
+        "inCall": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "workspaceId",
+        "officeId",
+        "roomId",
+        "displayName",
+        "role",
+        "avatarColor",
+        "x",
+        "y",
+        "direction",
+        "status",
+        "inCall",
+        "updatedAt"
+      ]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Realtime chat message supporting GLOBAL, ROOM, PROXIMITY, DM, and AI channels.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "channelType": {
+          "type": "string",
+          "enum": ["GLOBAL", "ROOM", "PROXIMITY", "DM", "AI_DIRECT"],
+          "maxLength": 32
+        },
+        "roomId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "senderId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "senderName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "senderType": {
+          "type": "string",
+          "enum": ["HUMAN", "AI"],
+          "maxLength": 16
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "channelType",
+        "roomId",
+        "senderId",
+        "senderName",
+        "senderType",
+        "content",
+        "createdAt"
+      ]
+    },
+    "OfficeMap": {
+      "title": "OfficeMap",
+      "description": "Serialized 2D office grid map with rooms, portals, walls, and interactive objects.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "tileSize": {
+          "type": "integer"
+        },
+        "objectsJson": {
+          "type": "string",
+          "maxLength": 50000
+        },
+        "roomsJson": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "portalsJson": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "updatedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "name",
+        "width",
+        "height",
+        "tileSize",
+        "objectsJson",
+        "roomsJson",
+        "portalsJson",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AIKnowledgeDoc": {
+      "title": "AIKnowledgeDoc",
+      "description": "Department knowledge base document and policy guidelines.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "departmentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "authorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "departmentId",
+        "title",
+        "category",
+        "content",
+        "authorId",
+        "createdAt"
+      ]
+    },
+    "AIKpi": {
+      "title": "AIKpi",
+      "description": "Key Performance Indicator tracked for a department or AI employee.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "departmentId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "aiEmployeeId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "targetValue": {
+          "type": "number"
+        },
+        "currentValue": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "creatorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "departmentId",
+        "aiEmployeeId",
+        "title",
+        "targetValue",
+        "currentValue",
+        "unit",
+        "creatorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Public human user profiles."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Isolated PII user profile data."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Multi-tenant workspaces."
+    },
+    "/workspaces/{workspaceId}/departments/{departmentId}": {
+      "schema": { "$ref": "#/entities/Department" },
+      "description": "Departments within a workspace."
+    },
+    "/workspaces/{workspaceId}/aiEmployees/{aiId}": {
+      "schema": { "$ref": "#/entities/AIEmployee" },
+      "description": "AI Workforce employees in a workspace."
+    },
+    "/workspaces/{workspaceId}/aiTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/AITask" },
+      "description": "AI tasks, deliverables, and approval states."
+    },
+    "/workspaces/{workspaceId}/aiActivityLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AIActivityLog" },
+      "description": "Immutable AI activity and governance audit trail."
+    },
+    "/workspaces/{workspaceId}/presence/{playerId}": {
+      "schema": { "$ref": "#/entities/PlayerPresence" },
+      "description": "Realtime 2D multiplayer player positions and presence."
+    },
+    "/workspaces/{workspaceId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Realtime global, room, proximity, and AI chat messages."
+    },
+    "/workspaces/{workspaceId}/maps/{mapId}": {
+      "schema": { "$ref": "#/entities/OfficeMap" },
+      "description": "2D Virtual Office map layouts and interactive objects."
+    },
+    "/workspaces/{workspaceId}/knowledge/{docId}": {
+      "schema": { "$ref": "#/entities/AIKnowledgeDoc" },
+      "description": "Department knowledge base documents for RAG."
+    },
+    "/workspaces/{workspaceId}/kpis/{kpiId}": {
+      "schema": { "$ref": "#/entities/AIKpi" },
+      "description": "Department and AI Employee KPIs."
+    }
+  }
+}

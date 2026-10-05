@@ -1,0 +1,6 @@
+{
+  "name": "NexusOS Virtual Office & AI Workforce",
+  "description": "Multiplayer 2D Virtual Office & Enterprise AI Workforce Platform with Human-in-the-Loop Governance, Department Supervisors, Realtime Presence, and Autonomous Agents.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
