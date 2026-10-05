@@ -10,6 +10,16 @@ export interface ServerAISettings {
   autoFallbackToGemini: boolean;
 }
 
+export interface ServerApiKeysVault {
+  nvidiaApiKey: string;
+  geminiApiKey: string;
+  openaiApiKey: string;
+  anthropicApiKey: string;
+  openrouterApiKey: string;
+  midtransServerKey: string;
+  midtransClientKey: string;
+}
+
 export interface WhatsAppDeliveryLog {
   id: string;
   recipientPhone: string;
@@ -43,6 +53,44 @@ class ServerIntegrationsManager {
     maxTokens: 1024,
     autoFallbackToGemini: true,
   };
+
+  public apiKeys: ServerApiKeysVault = {
+    nvidiaApiKey: process.env.NVIDIA_API_KEY || '',
+    geminiApiKey:
+      process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '',
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+    midtransServerKey: process.env.MIDTRANS_SERVER_KEY || '',
+    midtransClientKey: process.env.MIDTRANS_CLIENT_KEY || '',
+  };
+
+  public getMaskedKeysSummary(): Record<string, string> {
+    const mask = (val: string) => {
+      if (!val || val.trim().length < 6) return '';
+      const clean = val.trim();
+      return `${clean.slice(0, 6)}••••••••${clean.slice(-4)}`;
+    };
+    return {
+      NVIDIA: mask(this.apiKeys.nvidiaApiKey || process.env.NVIDIA_API_KEY || ''),
+      GEMINI: mask(
+        this.apiKeys.geminiApiKey ||
+          process.env.GEMINI_API_KEY ||
+          process.env.GOOGLE_AI_API_KEY ||
+          ''
+      ),
+      OPENAI: mask(this.apiKeys.openaiApiKey || process.env.OPENAI_API_KEY || ''),
+      ANTHROPIC: mask(
+        this.apiKeys.anthropicApiKey || process.env.ANTHROPIC_API_KEY || ''
+      ),
+      OPENROUTER: mask(
+        this.apiKeys.openrouterApiKey || process.env.OPENROUTER_API_KEY || ''
+      ),
+      MIDTRANS: mask(
+        this.apiKeys.midtransServerKey || process.env.MIDTRANS_SERVER_KEY || ''
+      ),
+    };
+  }
 
   public waStatus: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED' = 'QR_READY';
   public waQrDataUrl: string | null = null;

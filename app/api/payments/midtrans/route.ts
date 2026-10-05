@@ -7,7 +7,10 @@ import {
 export async function GET() {
   return NextResponse.json({
     transactions: serverIntegrations.midtransTransactions,
-    configuredServerKey: Boolean(process.env.MIDTRANS_SERVER_KEY),
+    configuredServerKey: Boolean(
+      serverIntegrations.apiKeys.midtransServerKey ||
+        process.env.MIDTRANS_SERVER_KEY
+    ),
   });
 }
 
@@ -35,16 +38,20 @@ export async function POST(req: NextRequest) {
       let snapToken = `snap_${Math.random().toString(36).substring(2, 14)}`;
       let redirectUrl = `https://app.sandbox.midtrans.com/snap/v2/vtweb/${snapToken}`;
 
-      // If MIDTRANS_SERVER_KEY is present in environment, call real Midtrans Snap REST API
-      if (process.env.MIDTRANS_SERVER_KEY) {
+      const activeMidtransKey =
+        serverIntegrations.apiKeys.midtransServerKey ||
+        process.env.MIDTRANS_SERVER_KEY;
+
+      // If MIDTRANS_SERVER_KEY is present in environment or Settings Vault, call real Midtrans Snap REST API
+      if (activeMidtransKey) {
         try {
           const isProd = process.env.MIDTRANS_IS_PRODUCTION === 'true';
           const midtransEndpoint = isProd
             ? 'https://app.midtrans.com/snap/v1/transactions'
             : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
-          const authString = Buffer.from(
-            `${process.env.MIDTRANS_SERVER_KEY}:`
-          ).toString('base64');
+          const authString = Buffer.from(`${activeMidtransKey}:`).toString(
+            'base64'
+          );
 
           const snapRes = await fetch(midtransEndpoint, {
             method: 'POST',

@@ -16,6 +16,9 @@ import {
   Sliders,
   Loader2,
   Sparkles,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface WhatsAppLogItem {
@@ -68,7 +71,7 @@ export function UnifiedSettingsAndIntegrationsView() {
       'nvidia/llama-3.1-nemotron-70b-instruct',
       'deepseek-ai/deepseek-r1',
     ],
-    GEMINI: ['gemini-3.8-flash', 'gemini-3.1-flash-lite'],
+    GEMINI: ['gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash'],
     OPENAI: ['gpt-4o', 'gpt-4o-mini'],
     ANTHROPIC: ['claude-3-5-sonnet-latest'],
     OPENROUTER: ['meta-llama/llama-3.1-70b-instruct'],
@@ -76,6 +79,17 @@ export function UnifiedSettingsAndIntegrationsView() {
   const [providersStatus, setProvidersStatus] = useState<
     Record<string, boolean>
   >({});
+  const [maskedKeys, setMaskedKeys] = useState<Record<string, string>>({});
+  const [nvidiaApiKeyInput, setNvidiaApiKeyInput] = useState('');
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
+  const [openaiApiKeyInput, setOpenaiApiKeyInput] = useState('');
+  const [anthropicApiKeyInput, setAnthropicApiKeyInput] = useState('');
+  const [openrouterApiKeyInput, setOpenrouterApiKeyInput] = useState('');
+  const [midtransServerKeyInput, setMidtransServerKeyInput] = useState('');
+  const [midtransClientKeyInput, setMidtransClientKeyInput] = useState('');
+  const [showKeyFields, setShowKeyFields] = useState<Record<string, boolean>>(
+    {}
+  );
   const [testingApi, setTestingApi] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -130,6 +144,7 @@ export function UnifiedSettingsAndIntegrationsView() {
         }
         if (data.catalog) setProviderCatalog(data.catalog);
         if (data.providersStatus) setProvidersStatus(data.providersStatus);
+        if (data.maskedKeys) setMaskedKeys(data.maskedKeys);
       })
       .catch(() => {});
 
@@ -154,6 +169,16 @@ export function UnifiedSettingsAndIntegrationsView() {
       .catch(() => {});
   }, []);
 
+  const buildApiKeysPayload = () => ({
+    nvidiaApiKey: nvidiaApiKeyInput.trim(),
+    geminiApiKey: geminiApiKeyInput.trim(),
+    openaiApiKey: openaiApiKeyInput.trim(),
+    anthropicApiKey: anthropicApiKeyInput.trim(),
+    openrouterApiKey: openrouterApiKeyInput.trim(),
+    midtransServerKey: midtransServerKeyInput.trim(),
+    midtransClientKey: midtransClientKeyInput.trim(),
+  });
+
   const handleTestAIConnection = async () => {
     setTestingApi(true);
     setTestResult(null);
@@ -167,9 +192,12 @@ export function UnifiedSettingsAndIntegrationsView() {
           provider: selectedProvider,
           model: selectedModel,
           nvidiaBaseUrl: nvidiaEndpoint,
+          apiKeys: buildApiKeysPayload(),
         }),
       });
       const data = await res.json();
+      if (data.providersStatus) setProvidersStatus(data.providersStatus);
+      if (data.maskedKeys) setMaskedKeys(data.maskedKeys);
       if (!res.ok || !data.ok) {
         setTestResult({
           ok: false,
@@ -196,7 +224,7 @@ export function UnifiedSettingsAndIntegrationsView() {
     setSavingAiSettings(true);
     soundFX.playClick();
     try {
-      await fetch('/api/settings/ai', {
+      const res = await fetch('/api/settings/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -206,8 +234,21 @@ export function UnifiedSettingsAndIntegrationsView() {
           temperature,
           maxTokens,
           autoFallbackToGemini: autoFallback,
+          apiKeys: buildApiKeysPayload(),
         }),
       });
+      const data = await res.json();
+      if (data.providersStatus) setProvidersStatus(data.providersStatus);
+      if (data.maskedKeys) setMaskedKeys(data.maskedKeys);
+
+      // Clear raw inputs after saving to server vault
+      setNvidiaApiKeyInput('');
+      setGeminiApiKeyInput('');
+      setOpenaiApiKeyInput('');
+      setAnthropicApiKeyInput('');
+      setOpenrouterApiKeyInput('');
+      setMidtransServerKeyInput('');
+      setMidtransClientKeyInput('');
 
       const updatedLocal = aiEmployees.map((ai) => ({
         ...ai,
@@ -546,41 +587,137 @@ export function UnifiedSettingsAndIntegrationsView() {
             </div>
           </div>
 
-          {/* Server Secrets Status Card */}
+          {/* Server API Key Input Form & Status Card */}
           <div className="p-5 sm:p-6 bg-slate-900 border border-slate-800 rounded-2xl space-y-4">
-            <h3 className="text-sm font-semibold text-white">
-              Server-Side API Key Status
-            </h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              For security compliance, API keys are stored strictly on the
-              server via AI Studio <strong>Settings &gt; Secrets</strong> and
-              never exposed to browser bundles.
-            </p>
-            <div className="space-y-2.5 font-mono text-xs">
-              {[
-                { key: 'NVIDIA', label: 'NVIDIA_API_KEY (NIM)' },
-                { key: 'GEMINI', label: 'GEMINI_API_KEY (Google AI)' },
-                { key: 'OPENAI', label: 'OPENAI_API_KEY' },
-                { key: 'ANTHROPIC', label: 'ANTHROPIC_API_KEY' },
-                { key: 'MIDTRANS', label: 'MIDTRANS_SERVER_KEY' },
-              ].map((item) => (
-                <div
-                  key={item.key}
-                  className="flex items-center justify-between p-3 bg-slate-950 border border-slate-800 rounded-xl"
-                >
-                  <span className="text-slate-300">{item.label}</span>
-                  <span
-                    className={
-                      providersStatus[item.key]
-                        ? 'text-emerald-400'
-                        : 'text-amber-400'
-                    }
-                  >
-                    {providersStatus[item.key] ? '● Configured' : '○ Ready'}
-                  </span>
-                </div>
-              ))}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-emerald-400" />
+                  Form Input API Key (Server Vault)
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Masukkan API Key Anda di bawah ini lalu klik{' '}
+                  <strong>Save & Apply</strong> atau{' '}
+                  <strong>Test API Connection</strong>.
+                </p>
+              </div>
             </div>
+
+            <div className="space-y-3 text-xs">
+              {[
+                {
+                  id: 'NVIDIA',
+                  label: 'NVIDIA NIM API Key',
+                  placeholder: 'nvapi-xxxxxxxxxxxxxxxxxxxx',
+                  value: nvidiaApiKeyInput,
+                  setter: setNvidiaApiKeyInput,
+                },
+                {
+                  id: 'GEMINI',
+                  label: 'Google Gemini API Key',
+                  placeholder: 'AIzaSyxxxxxxxxxxxxxxxxxx',
+                  value: geminiApiKeyInput,
+                  setter: setGeminiApiKeyInput,
+                },
+                {
+                  id: 'OPENAI',
+                  label: 'OpenAI API Key',
+                  placeholder: 'sk-proj-xxxxxxxxxxxxxxxx',
+                  value: openaiApiKeyInput,
+                  setter: setOpenaiApiKeyInput,
+                },
+                {
+                  id: 'OPENROUTER',
+                  label: 'OpenRouter API Key',
+                  placeholder: 'sk-or-v1-xxxxxxxxxxxxxxx',
+                  value: openrouterApiKeyInput,
+                  setter: setOpenrouterApiKeyInput,
+                },
+                {
+                  id: 'ANTHROPIC',
+                  label: 'Anthropic Claude API Key',
+                  placeholder: 'sk-ant-xxxxxxxxxxxxxxxxx',
+                  value: anthropicApiKeyInput,
+                  setter: setAnthropicApiKeyInput,
+                },
+                {
+                  id: 'MIDTRANS',
+                  label: 'Midtrans Server Key',
+                  placeholder: 'SB-Mid-server-xxxxxxxxxx',
+                  value: midtransServerKeyInput,
+                  setter: setMidtransServerKeyInput,
+                },
+              ].map((item) => {
+                const isConfigured = providersStatus[item.id];
+                const masked = maskedKeys[item.id];
+                const isVisible = Boolean(showKeyFields[item.id]);
+
+                return (
+                  <div
+                    key={item.id}
+                    className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <label className="font-medium text-slate-200">
+                        {item.label}
+                      </label>
+                      <span
+                        className={`font-mono text-[11px] ${
+                          isConfigured ? 'text-emerald-400' : 'text-amber-400'
+                        }`}
+                      >
+                        {isConfigured
+                          ? `● Active (${masked || 'Saved'})`
+                          : '○ Belum Diisi'}
+                      </span>
+                    </div>
+
+                    <div className="relative flex items-center">
+                      <input
+                        type={isVisible ? 'text' : 'password'}
+                        value={item.value}
+                        onChange={(e) => item.setter(e.target.value)}
+                        placeholder={
+                          masked
+                            ? `Tersimpan: ${masked} (Ketik untuk ganti)`
+                            : item.placeholder
+                        }
+                        className="w-full min-h-[40px] bg-slate-900 border border-slate-700 rounded-lg pl-3 pr-9 py-1.5 text-xs text-emerald-300 font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowKeyFields((prev) => ({
+                            ...prev,
+                            [item.id]: !prev[item.id],
+                          }))
+                        }
+                        className="absolute right-2.5 text-slate-400 hover:text-white"
+                        title={isVisible ? 'Sembunyikan Key' : 'Tampilkan Key'}
+                      >
+                        {isVisible ? (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleApplyModelToAllAgents}
+              disabled={savingAiSettings}
+              className="w-full min-h-[44px] bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"
+            >
+              <KeyRound className="w-4 h-4" />
+              {savingAiSettings
+                ? 'Menyimpan API Key ke Server...'
+                : 'Simpan Semua API Key & Terapkan'}
+            </button>
           </div>
         </div>
       )}
